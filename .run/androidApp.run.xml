@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+    <configuration name="androidApp" default="false" type="AndroidRunConfigurationType" factoryName="Android App">
+        <module name="TalkToAI.androidApp" />
+        <option name="ANDROID_RUN_CONFIGURATION_SCHEMA_VERSION" value="1" />
+        <option name="DEPLOY" value="true" />
+        <option name="DEPLOY_APK_FROM_BUNDLE" value="false" />
+        <option name="DEPLOY_AS_INSTANT" value="false" />
+        <option name="CLEAR_APP_STORAGE" value="false" />
+        <option name="MODE" value="default_activity" />
+        <option name="ACTIVITY" value="" />
+        <option name="ACTIVITY_CLASS" value="" />
+        <option name="SKIP_ACTIVITY_VALIDATION" value="false" />
+        <method v="2">
+            <option name="Android.Gradle.BeforeRunTask" enabled="true" />
+        </method>
+    </configuration>
+</component>
