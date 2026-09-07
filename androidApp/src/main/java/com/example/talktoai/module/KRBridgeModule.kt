@@ -3,339 +3,398 @@ package com.example.talktoai.module
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.util.Log
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.Network
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
+import android.content.Intent
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.FileProvider
+import com.example.talktoai.chat.ChatCoordinator
+import com.example.talktoai.chat.TalkToAiApi
+import com.example.talktoai.ThemeMode
+import com.example.talktoai.ThemePreferences
+import com.example.talktoai.KuiklyRenderActivity
+import com.example.talktoai.chat.ChatAttachment
+import com.example.talktoai.chat.InstallationIdentity
+import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
-import com.example.talktoai.DshClientHolder
-import com.example.talktoai.KRApplication
-import com.example.talktoai.dsh.contract.AttachmentRef
-import com.example.talktoai.dsh.contract.ImageAttachmentPayload
-import com.example.talktoai.dsh.contract.SessionId
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.io.File
+import com.example.talktoai.diagnostics.DiagnosticLogStore
 
 class KRBridgeModule : KuiklyRenderBaseModule() {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
-        return when (method) {
-            "ssoRequest" -> ssoRequest(params, callback)
-            "showAlert" -> showAlert(params, callback)
-            "closePage" -> closePage(params)
-            "openPage" -> openPage(params)
-            "copyToPasteboard" -> copyToPasteboard(params)
-            "toast" -> toast(params)
-            "log" -> log(params)
-            "reportDT" -> reportDT(params)
-            "reportRealtime" -> reportRealtime(params)
-            "qqLiveSSORequest" -> qqLiveSSORequest(params, callback)
-            "localServeTime" -> localServeTime(params, callback)
-            "currentTimestamp" -> currentTimestamp(params)
-            "dateFormatter" -> dateFormatter(params)
-
-            // ---------- DSH bridge (设计 §2.1 跨端一致性) ----------
-            "dsh.connect" -> dshConnect(callback)
-            "dsh.sendPrompt" -> dshSendPrompt(params, callback)
-            "dsh.listRecentEvents" -> dshListRecentEvents(params, callback)
-            "dsh.reconcilePrompt" -> dshReconcile(params, callback)
-            "dsh.listSessions" -> dshListSessions(callback)
-            "dsh.listWorkspaces" -> dshListWorkspaces(callback)
-            "dsh.exportDiagnostics" -> dshExportDiagnostics(callback)
-
-            else -> callback?.invoke(
-                mapOf(
-                    "code" to -1,
-                    "message" to "方法不存在"
-                )
-            )
-        }
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val api = TalkToAiApi()
+    private var coordinator: ChatCoordinator? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val diagnostics: DiagnosticLogStore by lazy {
+        DiagnosticLogStore(requireNotNull(context?.applicationContext))
     }
 
-    private fun dshConnect(callback: KuiklyRenderCallback?) {
-        scope.launch {
-            val r = runCatching { DshClientHolder.ensureConnected() }
-            callback?.invoke(
-                mapOf(
-                    "ok" to r.isSuccess,
-                    "error" to r.exceptionOrNull()?.message,
-                )
-            )
-        }
+    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? = when (method) {
+        "toast" -> toast(params)
+        "copyToPasteboard" -> copyToPasteboard(params)
+        "showAlert" -> showAlert(params, callback)
+        "talk.sessions.load" -> callbackJson(callback, chatCoordinator().sessionsJson())
+        "talk.sessions.rename" -> mutateSession(params, callback) { c, p -> c.rename(p.requireString("sessionId"), p.requireString("title")) }
+        "talk.sessions.archive" -> mutateSession(params, callback) { c, p -> c.archive(p.requireString("sessionId"), p.optBoolean("archived", true)) }
+        "talk.sessions.delete" -> mutateSession(params, callback) { c, p -> c.delete(p.requireString("sessionId")) }
+        "talk.sessions.export" -> exportSession(params, callback)
+        "talk.attachments.pick" -> pickAttachment(callback)
+        "talk.attachments.upload" -> uploadAttachment(params, callback)
+        "talk.chat.start" -> startChat(params, callback)
+        "talk.chat.retry" -> retryChat(params, callback)
+        "talk.chat.stop" -> stopChat(params, callback)
+        "talk.market.bars" -> marketBars(params, callback)
+        "talk.network.status" -> networkStatus(callback)
+        "talk.draft.get" -> callback?.invoke(mapOf("ok" to true, "text" to draftPreferences().getString(DRAFT_KEY, "").orEmpty()))
+        "talk.draft.set" -> saveDraft(params, callback)
+        "talk.theme.get" -> callback?.invoke(mapOf("ok" to true, "mode" to themePreferences().get().wireName))
+        "talk.theme.set" -> setTheme(params, callback)
+        "talk.plugins.status" -> pluginStatus(callback)
+        "talk.logs.summary" -> callbackJson(callback, diagnostics.summary())
+        "talk.feedback.export" -> exportFeedback(callback)
+        else -> callback?.invoke(mapOf("ok" to false, "error" to "METHOD_NOT_FOUND"))
     }
 
-    private fun dshSendPrompt(params: String?, callback: KuiklyRenderCallback?) {
-        scope.launch {
-            val p = JSONObject(params ?: "{}")
-            val sid = SessionId(p.optString("sessionId").ifEmpty { "default" })
-            val text = p.optString("text")
-            val attsJson = p.optJSONArray("attachments")
-            val attachments = mutableListOf<ImageAttachmentPayload>()
-            if (attsJson != null) {
-                for (i in 0 until attsJson.length()) {
-                    val a = attsJson.optJSONObject(i) ?: continue
-                    val ref = AttachmentRef(
-                        id = a.optString("id"),
-                        mime = a.optString("mime", "image/jpeg"),
-                        sizeBytes = a.optLong("sizeBytes", 0L),
-                    )
-                    attachments.add(
-                        ImageAttachmentPayload(
-                            ref = ref,
-                            base64Encoded = a.optString("base64"),
-                            widthPx = a.optInt("widthPx", 0),
-                            heightPx = a.optInt("heightPx", 0),
-                        )
-                    )
-                }
-            }
-            val ctx = runCatching { DshClientHolder.ensureConnected() }.getOrNull()
-            if (ctx == null) {
-                callback?.invoke(mapOf("accepted" to false, "reason" to "client-not-ready"))
-                return@launch
-            }
-            val r = ctx.client.sendPrompt(sid, text, attachments)
-            when (r) {
-                is com.example.talktoai.dsh.contract.DshResult.Ok -> callback?.invoke(
-                    mapOf("accepted" to true, "requestId" to r.value)
-                )
-                is com.example.talktoai.dsh.contract.DshResult.Err -> callback?.invoke(
-                    mapOf("accepted" to false, "reason" to r.error.message)
-                )
-            }
+    override fun onDestroy() {
+        coordinator?.cancelAll()
+        networkCallback?.let { callback ->
+            (context?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
+                ?.runCatching { unregisterNetworkCallback(callback) }
         }
+        networkCallback = null
+        super.onDestroy()
     }
 
-    private fun dshListRecentEvents(params: String?, callback: KuiklyRenderCallback?) {
-        scope.launch {
-            val ctx = runCatching { DshClientHolder.ensureConnected() }.getOrNull()
-            if (ctx == null) {
-                callback?.invoke(mapOf("count" to 0, "events" to "[]"))
-                return@launch
-            }
-            val snapshot = ctx.tracker.snapshot()
-            val arr = JSONArray()
-            for (e in snapshot) {
-                val o = JSONObject()
-                o.put("requestId", e.requestId.value)
-                o.put("sessionId", e.sessionId.value)
-                o.put("state", e.state::class.simpleName ?: "unknown")
-                arr.put(o)
-            }
-            callback?.invoke(mapOf("count" to snapshot.size, "events" to arr.toString()))
-        }
-    }
-
-    private fun dshReconcile(params: String?, callback: KuiklyRenderCallback?) {
-        scope.launch {
-            val p = JSONObject(params ?: "{}")
-            val sid = SessionId(p.optString("sessionId"))
-            val requestId = p.optString("requestId")
-            val ctx = runCatching { DshClientHolder.ensureConnected() }.getOrNull()
-            if (ctx == null) {
-                callback?.invoke(mapOf("ok" to false, "reason" to "client-not-ready"))
-                return@launch
-            }
-            val r = ctx.reconciler.reconcile(
-                com.example.talktoai.dsh.contract.PromptRequest(
-                    sessionId = sid,
-                    requestId = requestId,
-                    text = "_lookup_",
-                    attachments = emptyList(),
+    private fun chatCoordinator(): ChatCoordinator {
+        coordinator?.let { return it }
+        val appContext = requireNotNull(context?.applicationContext) { "Kuikly module context is unavailable" }
+        return ChatCoordinator(appContext) { event ->
+            diagnostics.record(
+                level = if (event.optString("type") == "error") "error" else "info",
+                event = "chat_${event.optString("type", "event")}",
+                identifiers = mapOf(
+                    "requestId" to event.optString("requestId"),
+                    "sessionId" to event.optJSONObject("session")?.optString("id").orEmpty(),
                 ),
-                ctx.client.trace(sid),
             )
-            when (r) {
-                is com.example.talktoai.dsh.contract.DshResult.Ok -> {
-                    val v = r.value
-                    val out = mutableMapOf<String, Any?>("ok" to true)
-                    when (v) {
-                        is com.example.talktoai.dsh.contract.PromptQueryResult.Committed -> {
-                            out["committed"] = true
-                            out["messageId"] = v.messageId
-                        }
-                        com.example.talktoai.dsh.contract.PromptQueryResult.NotFound -> out["committed"] = false
-                        is com.example.talktoai.dsh.contract.PromptQueryResult.Conflict -> {
-                            out["committed"] = false
-                            out["reason"] = v.reason
-                        }
+            mainHandler.post { appContext.sendKuiklyEvent(CHAT_EVENT, event) }
+        }.also { coordinator = it }
+    }
+
+    private fun startChat(params: String?, callback: KuiklyRenderCallback?) {
+        runCatching {
+            val json = JSONObject(params ?: "{}")
+            val attachmentsJson = json.optJSONArray("attachments")
+            val attachments = buildList {
+                if (attachmentsJson != null) {
+                    for (index in 0 until attachmentsJson.length()) {
+                        val item = attachmentsJson.getJSONObject(index)
+                        add(ChatAttachment(
+                            id = item.requireString("id"),
+                            name = item.requireString("name"),
+                            mimeType = item.requireString("mimeType"),
+                            sizeBytes = item.getLong("sizeBytes"),
+                            localPath = item.optString("localPath"),
+                            objectRef = item.requireString("objectRef"),
+                        ))
                     }
-                    callback?.invoke(out)
                 }
-                is com.example.talktoai.dsh.contract.DshResult.Err -> callback?.invoke(
-                    mapOf("ok" to false, "reason" to r.error.message)
-                )
             }
-        }
-    }
-
-    private fun dshListSessions(callback: KuiklyRenderCallback?) {
-        scope.launch {
-            val ctx = runCatching { DshClientHolder.ensureConnected() }.getOrNull()
-            if (ctx == null) {
-                callback?.invoke(mapOf("count" to 0, "sessions" to "[]"))
-                return@launch
-            }
-            val sl = ctx.sessionListSnapshot()
-            val arr = JSONArray()
-            sl?.sessions?.forEach { s ->
-                arr.put(JSONObject().apply {
-                    put("sessionId", s.sessionId.value)
-                    put("title", s.title)
-                    put("archived", s.archived)
-                    put("updatedAtMs", s.updatedAtMs)
-                })
-            }
-            callback?.invoke(mapOf("count" to arr.length(), "sessions" to arr.toString()))
-        }
-    }
-
-    private fun dshListWorkspaces(callback: KuiklyRenderCallback?) {
-        scope.launch {
-            val ctx = runCatching { DshClientHolder.ensureConnected() }.getOrNull()
-            if (ctx == null) {
-                callback?.invoke(mapOf("count" to 0, "workspaces" to "[]"))
-                return@launch
-            }
-            val wl = ctx.workspaceListSnapshot()
-            val arr = JSONArray()
-            wl?.workspaces?.forEach { w ->
-                arr.put(JSONObject().apply {
-                    put("workspaceId", w.workspaceId)
-                    put("name", w.name)
-                    put("sessionCount", w.sessionCount)
-                })
-            }
-            callback?.invoke(mapOf("count" to arr.length(), "workspaces" to arr.toString()))
-        }
-    }
-
-    private fun dshExportDiagnostics(callback: KuiklyRenderCallback?) {
-        scope.launch {
-            val ctx = runCatching { DshClientHolder.ensureConnected() }.getOrNull()
-            if (ctx == null) {
-                callback?.invoke(mapOf("ok" to false, "reason" to "client-not-ready"))
-                return@launch
-            }
-            val report = ctx.diagnostics.export(ctx.tracker, errors = emptyList())
-            callback?.invoke(mapOf("ok" to true, "report" to ctx.diagnostics.toJson(report)))
-        }
-    }
-
-    private fun reportRealtime(params: String?) {
-    }
-
-    private fun reportDT(params: String?) {
-    }
-
-    private fun log(params: String?) {
-        if (params == null) {
-            return
-        }
-
-        val paramJSON = JSONObject(params)
-        Log.i("KuiklyRender", paramJSON.optString("content"))
-    }
-
-    private fun toast(params: String?) {
-        if (params == null) {
-            return
-        }
-        val paramJSON = JSONObject(params)
-        Toast.makeText(
-            KRApplication.application,
-            paramJSON.optString("content"),
-            Toast.LENGTH_SHORT
-        ).show()
-    }
-
-    private fun copyToPasteboard(params: String?) {
-        if (params == null) {
-            return
-        }
-
-        val paramJSON = JSONObject(params)
-        (context?.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.also {
-            it.setPrimaryClip(ClipData.newPlainText(MODULE_NAME, paramJSON.optString("content")))
-        }
-    }
-
-    private fun openPage(params: String?) {
-        if (params == null) {
-            return
-        }
-        val ctx = context ?: return
-        val paramJSON = JSONObject(params)
-        val url = paramJSON.optString("url")
-    }
-
-    private fun closePage(params: String?) {
-        activity?.finish()
-    }
-
-    private fun showAlert(params: String?, callback: KuiklyRenderCallback?) {
-        if (params == null) {
-            return
-        }
-        val paramJSON = JSONObject(params)
-        val titleText = paramJSON.optString("title")
-        val message = paramJSON.optString("message")
-        val buttons = paramJSON.optJSONArray("buttons") ?: JSONArray()
-    }
-
-    private fun ssoRequest(params: String?, callback: KuiklyRenderCallback?) {}
-
-    private fun qqLiveSSORequest(params: String?, callback: KuiklyRenderCallback?) {
-    }
-
-    private fun localServeTime(params: String?, callback: KuiklyRenderCallback?) {
-        val time = (System.currentTimeMillis() / 1000.0)
-        callback?.invoke(
-            mapOf(
-                "time" to time
+            val requestId = chatCoordinator().start(
+                json.optString("sessionId").takeIf(String::isNotBlank), json.requireString("text"), attachments,
             )
+            callback?.invoke(mapOf("ok" to true, "requestId" to requestId))
+        }.onFailure { callback?.invoke(mapOf("ok" to false, "error" to "INVALID_ARGUMENT", "message" to (it.message ?: "参数错误"))) }
+    }
+
+    private fun pickAttachment(callback: KuiklyRenderCallback?) {
+        val activity = context as? KuiklyRenderActivity ?: run {
+            callback?.invoke(mapOf("ok" to false, "error" to "ATTACHMENT_PICK_UNAVAILABLE"))
+            return
+        }
+        activity.pickAttachment { result ->
+            result.onSuccess { attachment ->
+                callback?.invoke(mapOf(
+                    "ok" to true,
+                    "id" to attachment.id,
+                    "name" to attachment.name,
+                    "mimeType" to attachment.mimeType,
+                    "sizeBytes" to attachment.sizeBytes,
+                    "localPath" to attachment.localPath,
+                    "objectRef" to attachment.objectRef,
+                ))
+            }.onFailure { error ->
+                val code = error.message.orEmpty().ifEmpty { "ATTACHMENT_IMPORT_FAILED" }
+                callback?.invoke(mapOf("ok" to false, "error" to code))
+            }
+        }
+    }
+
+    private fun uploadAttachment(params: String?, callback: KuiklyRenderCallback?) {
+        runCatching {
+            val item = JSONObject(params ?: "{}")
+            ChatAttachment(
+                id = item.requireString("id"),
+                name = item.requireString("name"),
+                mimeType = item.requireString("mimeType"),
+                sizeBytes = item.getLong("sizeBytes"),
+                localPath = item.requireString("localPath"),
+            )
+        }.onSuccess { attachment ->
+            val appContext = requireNotNull(context?.applicationContext)
+            api.uploadAttachment(InstallationIdentity(appContext).get(), attachment, object : TalkToAiApi.JsonListener {
+                override fun onSuccess(json: JSONObject) {
+                    diagnostics.record(
+                        "info", "attachment_upload_success",
+                        identifiers = mapOf("attachmentId" to attachment.id),
+                        attributes = mapOf("mimeType" to attachment.mimeType, "sizeBytes" to attachment.sizeBytes),
+                    )
+                    mainHandler.post { callbackJson(callback, json) }
+                }
+
+                override fun onFailure(code: String, message: String, retryable: Boolean) {
+                    diagnostics.record(
+                        "warn", "attachment_upload_failed",
+                        identifiers = mapOf("attachmentId" to attachment.id),
+                        attributes = mapOf("code" to code),
+                    )
+                    mainHandler.post {
+                        callback?.invoke(mapOf("ok" to false, "error" to code, "message" to message, "retryable" to retryable))
+                    }
+                }
+            })
+        }.onFailure {
+            callback?.invoke(mapOf("ok" to false, "error" to "INVALID_ARGUMENT", "message" to "附件参数无效"))
+        }
+    }
+
+    private fun stopChat(params: String?, callback: KuiklyRenderCallback?) {
+        val requestId = JSONObject(params ?: "{}").optString("requestId")
+        chatCoordinator().stop(requestId)
+        callback?.invoke(mapOf("ok" to true))
+    }
+
+    private fun retryChat(params: String?, callback: KuiklyRenderCallback?) {
+        runCatching {
+            chatCoordinator().retry(JSONObject(params ?: "{}").requireString("sessionId"))
+        }.onSuccess { requestId -> callback?.invoke(mapOf("ok" to true, "requestId" to requestId)) }
+            .onFailure { callback?.invoke(mapOf("ok" to false, "error" to "RETRY_UNAVAILABLE", "message" to "没有可重试的用户消息")) }
+    }
+
+    private fun mutateSession(
+        params: String?,
+        callback: KuiklyRenderCallback?,
+        action: (ChatCoordinator, JSONObject) -> Unit,
+    ) {
+        runCatching { action(chatCoordinator(), JSONObject(params ?: "{}")) }
+            .onSuccess { callbackJson(callback, chatCoordinator().sessionsJson()) }
+            .onFailure { callback?.invoke(mapOf("ok" to false, "error" to "INVALID_ARGUMENT")) }
+    }
+
+    private fun marketBars(params: String?, callback: KuiklyRenderCallback?) {
+        val json = JSONObject(params ?: "{}")
+        api.getMarketBars(
+            json.optString("symbol", "600000.SH"),
+            json.optString("period", "day"),
+            json.optString("from").takeIf(String::isNotBlank),
+            json.optString("to").takeIf(String::isNotBlank),
+            object : TalkToAiApi.JsonListener {
+            override fun onSuccess(json: JSONObject) {
+                diagnostics.record("info", "market_bars_success", attributes = mapOf("period" to json.optString("period", "unknown")))
+                mainHandler.post { callbackJson(callback, json) }
+            }
+
+            override fun onFailure(code: String, message: String, retryable: Boolean) {
+                diagnostics.record("warn", "market_bars_failed", attributes = mapOf("code" to code, "retryable" to retryable))
+                mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to code, "message" to message, "retryable" to retryable)) }
+            }
+            },
         )
     }
 
-    private fun currentTimestamp(params: String?): String {
-        return (System.currentTimeMillis()).toString()
+    private fun pluginStatus(callback: KuiklyRenderCallback?) {
+        api.getHealth(object : TalkToAiApi.JsonListener {
+            override fun onSuccess(json: JSONObject) {
+                val capabilities = json.optJSONObject("capabilities") ?: JSONObject()
+                val marketProvider = capabilities.optString("marketProvider", "unknown")
+                val marketStatus = when {
+                    !capabilities.optBoolean("marketReady") -> "unavailable"
+                    marketProvider == "fixture" -> "test_fixture"
+                    else -> "active"
+                }
+                val attachmentCapability = capabilities.optString("attachments", "configuration_required")
+                val plugins = JSONObject().put("plugins", org.json.JSONArray().apply {
+                    put(JSONObject().put("id", "market-data").put("name", "A股行情")
+                        .put("status", marketStatus)
+                        .put("detail", "$marketProvider · 只读"))
+                    put(JSONObject().put("id", "ai-chat").put("name", "腾讯云 AI")
+                        .put("status", if (capabilities.optBoolean("aiReady")) "active" else "configuration_required")
+                        .put("detail", if (capabilities.optBoolean("aiReady")) "流式服务可用" else "服务端凭证待配置"))
+                    put(JSONObject().put("id", "attachments").put("name", "附件").put("status", attachmentCapability)
+                        .put("detail", "图片/CSV/TXT 已本地预检；云端存储与内容解析状态见上方"))
+                })
+                mainHandler.post { callbackJson(callback, plugins) }
+            }
+
+            override fun onFailure(code: String, message: String, retryable: Boolean) {
+                mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to code, "message" to message)) }
+            }
+        })
     }
 
-    private fun dateFormatter(params: String?): String {
-        val paramJSONObject = JSONObject(params ?: "{}")
-        val data = Date(paramJSONObject.optLong("timeStamp"))
-        val format = SimpleDateFormat(paramJSONObject.optString("format"))
-        return format.format(data)
+    private fun exportFeedback(callback: KuiklyRenderCallback?) {
+        runCatching {
+            diagnostics.record("info", "feedback_exported")
+            val target = diagnostics.createFeedbackPackage()
+            val ctx = requireNotNull(context)
+            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", target)
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            ctx.startActivity(Intent.createChooser(share, "导出问题反馈包"))
+            callback?.invoke(mapOf("ok" to true))
+        }.onFailure {
+            callback?.invoke(mapOf("ok" to false, "error" to "FEEDBACK_EXPORT_FAILED"))
+        }
+    }
+
+    private fun callbackJson(callback: KuiklyRenderCallback?, json: JSONObject) {
+        callback?.invoke(mapOf("ok" to true, "json" to json.toString()))
+    }
+
+    private fun isOnline(): Boolean {
+        val manager = context?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        val usable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        val suspended = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P &&
+            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)
+        return usable && !suspended
+    }
+
+    private fun networkStatus(callback: KuiklyRenderCallback?) {
+        ensureNetworkMonitoring()
+        callback?.invoke(mapOf("online" to isOnline()))
+    }
+
+    private fun ensureNetworkMonitoring() {
+        if (networkCallback != null) return
+        val appContext = requireNotNull(context?.applicationContext)
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = emitNetworkState(appContext)
+            override fun onLost(network: Network) = emitNetworkState(appContext)
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = emitNetworkState(appContext)
+        }
+        networkCallback = callback
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            manager.registerDefaultNetworkCallback(callback)
+        } else {
+            manager.registerNetworkCallback(
+                NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(),
+                callback,
+            )
+        }
+    }
+
+    private fun emitNetworkState(appContext: Context) {
+        mainHandler.post {
+            appContext.sendKuiklyEvent(NETWORK_EVENT, JSONObject().put("online", isOnline()))
+        }
+    }
+
+    private fun draftPreferences() = requireNotNull(context?.applicationContext)
+        .getSharedPreferences(DRAFT_PREFERENCES, Context.MODE_PRIVATE)
+
+    private fun saveDraft(params: String?, callback: KuiklyRenderCallback?) {
+        val text = JSONObject(params ?: "{}").optString("text").take(MAX_DRAFT_CHARS)
+        val ok = draftPreferences().edit().putString(DRAFT_KEY, text).commit()
+        callback?.invoke(mapOf("ok" to ok))
+    }
+
+    private fun themePreferences(): ThemePreferences =
+        ThemePreferences(requireNotNull(context?.applicationContext) { "Kuikly module context is unavailable" })
+
+    private fun setTheme(params: String?, callback: KuiklyRenderCallback?) {
+        val requested = JSONObject(params ?: "{}").optString("mode")
+        val mode = ThemeMode.entries.firstOrNull { it.wireName == requested }
+        if (mode == null) {
+            callback?.invoke(mapOf("ok" to false, "error" to "INVALID_THEME_MODE"))
+            return
+        }
+        callback?.invoke(mapOf("ok" to true, "mode" to mode.wireName))
+        mainHandler.post { themePreferences().set(mode) }
+    }
+
+    private fun toast(params: String?) {
+        val content = JSONObject(params ?: "{}").optString("content")
+        Toast.makeText(context, content, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun copyToPasteboard(params: String?) {
+        val value = JSONObject(params ?: "{}").optString("content")
+        (context?.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+            ?.setPrimaryClip(ClipData.newPlainText("TalkToAI", value))
+    }
+
+    private fun showAlert(params: String?, callback: KuiklyRenderCallback?) {
+        val activity = context as? android.app.Activity ?: run {
+            callback?.invoke(mapOf("index" to -1))
+            return
+        }
+        val json = JSONObject(params ?: "{}")
+        val buttons = json.optJSONArray("buttons")
+        val left = buttons?.optString(0).orEmpty().ifBlank { "取消" }
+        val right = buttons?.optString(1).orEmpty().ifBlank { "确定" }
+        AlertDialog.Builder(activity)
+            .setTitle(json.optString("title"))
+            .setMessage(json.optString("message"))
+            .setNegativeButton(left) { _, _ -> callback?.invoke(mapOf("index" to 0)) }
+            .setPositiveButton(right) { _, _ -> callback?.invoke(mapOf("index" to 1)) }
+            .setOnCancelListener { callback?.invoke(mapOf("index" to 0)) }
+            .show()
+    }
+
+    private fun exportSession(params: String?, callback: KuiklyRenderCallback?) {
+        runCatching {
+            val sessionId = JSONObject(params ?: "{}").requireString("sessionId")
+            val ctx = requireNotNull(context)
+            val exportsDir = File(ctx.cacheDir, "exports").apply { mkdirs() }
+            val target = File(exportsDir, "talktoai-session-${sessionId.take(8)}.md")
+            target.writeText(chatCoordinator().exportMarkdown(sessionId), Charsets.UTF_8)
+            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", target)
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "text/markdown"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            ctx.startActivity(Intent.createChooser(share, "导出会话"))
+            callback?.invoke(mapOf("ok" to true))
+        }.onFailure {
+            callback?.invoke(mapOf("ok" to false, "error" to "EXPORT_FAILED", "message" to "会话导出失败"))
+        }
+    }
+
+    private fun JSONObject.requireString(key: String): String = getString(key).trim().also {
+        require(it.isNotEmpty()) { "$key must not be empty" }
     }
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
+        const val CHAT_EVENT = "talk.chat.event"
+        const val NETWORK_EVENT = "talk.network.event"
+        private const val DRAFT_PREFERENCES = "talktoai_draft_v1"
+        private const val DRAFT_KEY = "text"
+        private const val MAX_DRAFT_CHARS = 12_000
     }
-}
-
-private fun JSONObject.toMap(): Map<Any, Any> {
-    val map = mutableMapOf<Any, Any>()
-    val keys = keys()
-    while (keys.hasNext()) {
-        val key = keys.next()
-        when (val v = opt(key)) {
-            is JSONObject -> {
-                map[key] = v.toMap()
-            }
-
-            else -> {
-                v?.also {
-                    map[key] = it
-                }
-            }
-        }
-    }
-    return map
 }

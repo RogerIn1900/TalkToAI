@@ -13,7 +13,7 @@ import com.tencent.kuikly.core.reactive.handler.*
  * 1. 注入 [BridgeModule]（§2.1 跨端一致性）。
  * 2. 监听 `themeDidChanged`，把夜间模式状态同步推给 [ThemeColors]（§4.2），
  *    所有引用 [ThemeColors.xxx] 的节点会随之重绘。
- * 3. 把 DSH 主题相关的 token getter 透出（设计文档 §4.1 抽象接口）。
+ * 3. 将统一主题 token 暴露给所有 TalkToAI 页面。
  */
 internal abstract class BasePager : Pager() {
 

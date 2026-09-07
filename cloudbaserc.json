@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "envId": "stockai-test-d6gd0ho1z97f0bbde",
+  "functionRoot": "backend/functions",
+  "functions": [
+    {
+      "name": "talktoai-api",
+      "type": "HTTP",
+      "runtime": "Nodejs20.19",
+      "timeout": 120,
+      "memorySize": 256,
+      "description": "TalkToAI Android V1 test API; read-only A-share consultation",
+      "installDependency": true,
+      "envVariables": {
+        "CLOUDBASE_ENV_ID": "stockai-test-d6gd0ho1z97f0bbde",
+        "AI_PROVIDER": "cloudbase",
+        "AI_MODEL": "hy3",
+        "DAILY_AI_LIMIT": "500",
+        "APP_TIME_ZONE": "Asia/Shanghai",
+        "MARKET_PROVIDER": "fixture",
+        "ALLOW_EPHEMERAL_QUOTA": "true"
+      }
+    }
+  ],
+  "gateway": {
+    "routes": [
+      {
+        "path": "/talktoai",
+        "target": "function:talktoai-api",
+        "protocol": "HTTPS",
+        "enable": true,
+        "enablePathTransmission": true,
+        "enableAuth": false,
+        "qpsPolicy": {
+          "qpsTotal": 100,
+          "qpsPerClient": {
+            "limitBy": "ClientIP",
+            "limitValue": 5
+          }
+        }
+      }
+    ]
+  }
+}

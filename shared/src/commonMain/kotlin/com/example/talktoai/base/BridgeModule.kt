@@ -317,7 +317,7 @@ internal class BridgeModule : Module() {
 
     /**
      * 通用 JSON-RPC 调用（设计 §2.1 跨端一致性）。
-     * 用于把 :dsh 模块的能力桥接到 Kuikly UI 层（ChatPager / Diagnostics）。
+     * TalkToAI 的 Kuikly UI 与 Android 原生能力统一通过此 JSON 边界通信。
      */
     fun callJsonRpc(methodName: String, data: JSONObject?, callbackFn: CallbackFn?) {
         callNativeMethod(methodName, data, callbackFn)

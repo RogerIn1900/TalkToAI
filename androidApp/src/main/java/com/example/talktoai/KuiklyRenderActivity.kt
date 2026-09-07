@@ -4,10 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.adapter.KuiklyRenderAdapterManager
 import com.tencent.kuikly.core.render.android.css.ktx.toMap
@@ -23,6 +25,9 @@ import com.example.talktoai.adapter.KRUncaughtExceptionHandlerAdapter
 import com.example.talktoai.module.KRBridgeModule
 import com.example.talktoai.module.KRShareModule
 import org.json.JSONObject
+import com.example.talktoai.chat.AttachmentStore
+import com.example.talktoai.chat.ChatAttachment
+import java.util.concurrent.Executors
 
 class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorDelegate {
 
@@ -31,6 +36,19 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     private lateinit var errorView: View
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
+    private val attachmentExecutor = Executors.newSingleThreadExecutor()
+    private var attachmentCallback: ((Result<ChatAttachment>) -> Unit)? = null
+    private val attachmentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val callback = attachmentCallback.also { attachmentCallback = null } ?: return@registerForActivityResult
+        if (uri == null) {
+            callback(Result.failure(IllegalStateException("ATTACHMENT_PICK_CANCELLED")))
+            return@registerForActivityResult
+        }
+        attachmentExecutor.execute {
+            val result = runCatching { AttachmentStore(applicationContext).import(uri) }
+            runOnUiThread { callback(result) }
+        }
+    }
 
     private val pageName: String
         get() {
@@ -38,7 +56,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
             return if (pn.isNotEmpty()) {
                 return pn
             } else {
-                "dsh_hub"
+                "talk_to_ai"
             }
         }
 
@@ -54,8 +72,19 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     }
 
     override fun onDestroy() {
+        attachmentCallback = null
+        attachmentExecutor.shutdownNow()
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
+    }
+
+    fun pickAttachment(callback: (Result<ChatAttachment>) -> Unit) {
+        if (attachmentCallback != null) {
+            callback(Result.failure(IllegalStateException("ATTACHMENT_PICK_IN_PROGRESS")))
+            return
+        }
+        attachmentCallback = callback
+        attachmentPicker.launch(arrayOf("image/*", "text/csv", "text/plain"))
     }
 
     override fun onPause() {
@@ -90,6 +119,8 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     private fun createPageData(): Map<String, Any> {
         val param = argsToMap()
         param["appId"] = 1
+        param["isNightMode"] = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
         return param
     }
 
@@ -104,8 +135,11 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
             window?.statusBarColor = Color.TRANSPARENT
             window?.decorView?.systemUiVisibility =
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            val baseFlags = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            val isNight = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+            decorView.systemUiVisibility = if (isNight) baseFlags else baseFlags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            navigationBarColor = if (isNight) Color.BLACK else Color.WHITE
         }
 
     }

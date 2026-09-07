@@ -11,8 +11,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+.tcb/
+/artifacts/*.apk
+/artifacts/debug-archive/
 *.so
 *.js
+!backend/functions/talktoai-api/dist/**/*.js
 node_modules
 Pods
 Pods/*

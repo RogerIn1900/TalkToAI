@@ -12,7 +12,7 @@ import com.tencent.kuikly.core.views.*
  * 侧边栏 Drawer（TalkToAI/Kuikly 实现蓝图 §3.2）。
  *
  * 设计约束：
- * - 抽出自 [com.example.talktoai.base.dsh.DshHubPager] 的内联渲染，
+ * - 提供可复用的会话抽屉渲染，
  *   host 只需要把 [DrawerEntry] 列表 / brandTitle 注入即可。
  * - 配色完全走 [ThemeColors]（§4.1）；亮 / 暗模式自动适配。
  * - 自身只负责渲染与回调分发；显示 / 隐藏 + 遮罩由外层持有者负责（手机端默认浮层，

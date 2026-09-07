@@ -60,7 +60,7 @@ kotlin {
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
-                // ChatPager/DshBridgeModule 使用协程（设计 §9.1 可观测性）
+                // TalkToAI shared ViewModel uses coroutines for cancellable work.
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
             }
         }

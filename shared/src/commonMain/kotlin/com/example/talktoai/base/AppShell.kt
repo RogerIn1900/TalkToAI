@@ -116,7 +116,7 @@ internal class AppShell : BasePager() {
                         }
                         View { attr { width(24f) } }   // 占位，让标题居中
                     }
-                    // 消息占位（实际内容由 ChatPager/DshHubPager 接管）
+                    // 消息占位（实际内容由 TalkToAI chat page 接管）
                     View {
                         attr {
                             flex(1f)
@@ -129,7 +129,7 @@ internal class AppShell : BasePager() {
                                 fontSize(14f)
                                 color(ThemeColors.onSurfaceVariant)
                                 text("对话 Tab（v0.1 占位）\n" +
-                                     "后续将 DshHubPager 整体迁入")
+                                     "后续接入 TalkToAI 对话状态")
                             }
                         }
                     }
@@ -285,10 +285,10 @@ internal class AppShell : BasePager() {
         }
     }
 
-    /** 旧路由 `dsh_hub` 兼容：直接进 Chat Tab。 */
+    /** 旧实验路由兼容：直接进入 Chat Tab。 */
     override fun created() {
         super.created()
-        if (pageData.params.optString("pageName") == "dsh_hub") {
+        if (pageData.params.optString("pageName") == "legacy_hub") {
             state.switchTab(0)
         }
     }

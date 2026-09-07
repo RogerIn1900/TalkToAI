@@ -25,4 +25,3 @@ dependencyResolutionManagement {
 rootProject.name = "TalkToAI"
 include(":androidApp")
 include(":shared")
-include(":dsh")
