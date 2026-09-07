@@ -231,29 +231,28 @@ export function createApp(deps: AppDependencies) {
 function createCloudBaseDependencies(): AppDependencies {
   const limit = Number.parseInt(process.env.DAILY_AI_LIMIT || `${DEFAULT_DAILY_AI_LIMIT}`, 10);
   const accessKey = process.env.CLOUDBASE_APIKEY;
-  if (!accessKey && process.env.ALLOW_EPHEMERAL_QUOTA !== "true") {
-    throw new Error("CLOUDBASE_APIKEY is required; ephemeral quota is disabled");
-  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const cloudbase = require("@cloudbase/node-sdk") as { init(input: Record<string, unknown>): any };
-  const app = cloudbase.init({
+  const initOptions: Record<string, unknown> = {
     env: process.env.CLOUDBASE_ENV_ID,
-    accessKey,
     timeout: 120_000,
-  });
-  const quota = accessKey ? new CloudBaseQuotaStore(app.database(), limit) : new MemoryQuotaStore(limit);
+  };
+  if (accessKey) initOptions.accessKey = accessKey;
+  const app = cloudbase.init(initOptions);
+
+  // CloudBase injects a runtime credential into cloud functions. The Node SDK uses
+  // that identity for AI, database and storage, so a second long-lived API key is
+  // optional rather than a prerequisite in the deployed function.
+  const quota = process.env.ALLOW_EPHEMERAL_QUOTA === "true"
+    ? new MemoryQuotaStore(limit)
+    : new CloudBaseQuotaStore(app.database(), limit);
   return {
     quota,
     market: new FixtureMarketDataProvider(),
     marketProvider: "fixture",
-    aiConfigured: Boolean(accessKey),
-    uploadAttachment: accessKey
-      ? (cloudPath, content) => app.uploadFile({ cloudPath, fileContent: content })
-      : undefined,
-    createAiModel: () => {
-      if (!accessKey) throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证");
-      return app.ai().createModel(process.env.AI_PROVIDER || DEFAULT_AI_PROVIDER) as AiModel;
-    },
+    aiConfigured: true,
+    uploadAttachment: (cloudPath, content) => app.uploadFile({ cloudPath, fileContent: content }),
+    createAiModel: () => app.ai().createModel(process.env.AI_PROVIDER || DEFAULT_AI_PROVIDER) as AiModel,
     now: () => new Date(),
   };
 }

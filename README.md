@@ -10,11 +10,11 @@ npm test
 npm run build
 
 cd ../../..
-./gradlew :androidApp:testDebugUnitTest :androidApp:assembleDebug --no-daemon
+./gradlew :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug --no-daemon
 adb -s emulator-5554 install --no-streaming -r -t androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-测试环境接口：`https://stockai-test-d6gd0ho1z97f0bbde.service.tcloudbase.com/talktoai`。当前公开测试环境故意不包含任何密钥；未配置凭证时 AI 和附件上传会返回明确的 503，而不会回退成伪成功。
+测试环境接口：`https://stockai-test-d6gd0ho1z97f0bbde.service.tcloudbase.com/talktoai`。CloudBase Node SDK 在函数内调用 `cloudbase / hy3`；Android 不保存服务端密钥。测试环境已经完成真实 SSE 与云存储上传验证。
 
 详细资料：
 

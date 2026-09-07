@@ -243,7 +243,12 @@ internal class TalkToAiPager : BasePager() {
                     }
                     actionButton(ctx, "复制", "copy")
                     actionButton(ctx, "重试", "retry")
-                    actionButton(ctx, if (ctx.viewModel.isGenerating) "停止" else "新会话", if (ctx.viewModel.isGenerating) "stop" else "new")
+                    actionButton(
+                        ctx,
+                        title = "新会话",
+                        action = "generation",
+                        dynamicTitle = { if (ctx.viewModel.isGenerating) "停止" else "新会话" },
+                    )
                     actionButton(ctx, ctx.viewModel.themeLabel(), "theme", width = 86f)
                 }
 
@@ -297,14 +302,18 @@ internal class TalkToAiPager : BasePager() {
                             borderRadius(12f)
                             backgroundColor(ThemeColors.accent)
                             titleAttr {
-                                text(if (ctx.viewModel.isGenerating) "生成中" else "发送")
+                                text(if (ctx.viewModel.isGenerating) "停止" else "发送")
                                 color(ThemeColors.onAccent)
                                 fontSize(14f)
                             }
                         }
                         event {
                             click {
-                                if (ctx.viewModel.send()) ctx.inputRef.view?.setText("")
+                                if (ctx.viewModel.isGenerating) {
+                                    ctx.viewModel.stop()
+                                } else if (ctx.viewModel.send()) {
+                                    ctx.inputRef.view?.setText("")
+                                }
                             }
                         }
                     }
@@ -442,6 +451,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.actionButton(
     action: String,
     width: Float = 72f,
     payload: String = "",
+    dynamicTitle: (() -> String)? = null,
 ) {
     Button {
         attr {
@@ -450,7 +460,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.actionButton(
             marginRight(8f)
             borderRadius(9f)
             backgroundColor(ThemeColors.surfaceVariant)
-            titleAttr { text(title); fontSize(12f); color(ThemeColors.onSurface) }
+            titleAttr { text(dynamicTitle?.invoke() ?: title); fontSize(12f); color(ThemeColors.onSurface) }
         }
         event {
             click {
@@ -460,6 +470,9 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.actionButton(
                 else if (action == "retry") ctx.viewModel.retry()
                 else if (action == "stop") ctx.viewModel.stop()
                 else if (action == "new") ctx.viewModel.newSession()
+                else if (action == "generation") {
+                    if (ctx.viewModel.isGenerating) ctx.viewModel.stop() else ctx.viewModel.newSession()
+                }
                 else if (action == "theme") ctx.viewModel.cycleTheme()
                 else if (action == "sessions") {
                     ctx.viewModel.status = "正在打开会话管理…"

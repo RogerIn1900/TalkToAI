@@ -24,8 +24,8 @@ Kuikly View 不直接访问网络或持久层。ViewModel 只发出动作和维�
 ## 后端职责
 
 - 验证请求大小、附件元数据和匿名安装标识。
-- 使用 Asia/Shanghai 日期桶原子执行每日 500 次限额。
-- 从服务端环境变量读取 AI 凭证并代理 SSE；客户端断开时取消上游请求。
+- 使用 Asia/Shanghai 日期桶执行每日 500 次限额；测试环境当前为进程内存桶，持久化原子计数仍是上线前门槛。
+- 通过 CloudBase 云函数内的 Node SDK 调用 `cloudbase / hy3` 并代理 SSE；客户端断开时取消上游生成。凭证不进入 Android 或 Git。
 - 调用行情 Provider，归一化代码、时区、价格、成交量、来源和新鲜度。
 - 返回稳定 `error.code`、`requestId`；日志不记录正文、附件内容或凭证。
 

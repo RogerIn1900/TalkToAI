@@ -203,30 +203,28 @@ function createApp(deps) {
 function createCloudBaseDependencies() {
     const limit = Number.parseInt(process.env.DAILY_AI_LIMIT || `${constants_1.DEFAULT_DAILY_AI_LIMIT}`, 10);
     const accessKey = process.env.CLOUDBASE_APIKEY;
-    if (!accessKey && process.env.ALLOW_EPHEMERAL_QUOTA !== "true") {
-        throw new Error("CLOUDBASE_APIKEY is required; ephemeral quota is disabled");
-    }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cloudbase = require("@cloudbase/node-sdk");
-    const app = cloudbase.init({
+    const initOptions = {
         env: process.env.CLOUDBASE_ENV_ID,
-        accessKey,
         timeout: 120_000,
-    });
-    const quota = accessKey ? new quota_1.CloudBaseQuotaStore(app.database(), limit) : new quota_1.MemoryQuotaStore(limit);
+    };
+    if (accessKey)
+        initOptions.accessKey = accessKey;
+    const app = cloudbase.init(initOptions);
+    // CloudBase injects a runtime credential into cloud functions. The Node SDK uses
+    // that identity for AI, database and storage, so a second long-lived API key is
+    // optional rather than a prerequisite in the deployed function.
+    const quota = process.env.ALLOW_EPHEMERAL_QUOTA === "true"
+        ? new quota_1.MemoryQuotaStore(limit)
+        : new quota_1.CloudBaseQuotaStore(app.database(), limit);
     return {
         quota,
         market: new fixtures_1.FixtureMarketDataProvider(),
         marketProvider: "fixture",
-        aiConfigured: Boolean(accessKey),
-        uploadAttachment: accessKey
-            ? (cloudPath, content) => app.uploadFile({ cloudPath, fileContent: content })
-            : undefined,
-        createAiModel: () => {
-            if (!accessKey)
-                throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证");
-            return app.ai().createModel(process.env.AI_PROVIDER || constants_1.DEFAULT_AI_PROVIDER);
-        },
+        aiConfigured: true,
+        uploadAttachment: (cloudPath, content) => app.uploadFile({ cloudPath, fileContent: content }),
+        createAiModel: () => app.ai().createModel(process.env.AI_PROVIDER || constants_1.DEFAULT_AI_PROVIDER),
         now: () => new Date(),
     };
 }
