@@ -217,7 +217,9 @@ function createCloudBaseDependencies() {
     // optional rather than a prerequisite in the deployed function.
     const quota = process.env.ALLOW_EPHEMERAL_QUOTA === "true"
         ? new quota_1.MemoryQuotaStore(limit)
-        : new quota_1.CloudBaseQuotaStore(app.database(), limit);
+        : process.env.QUOTA_STORE === "sql"
+            ? new quota_1.CloudBaseSqlQuotaStore(app.models, limit)
+            : new quota_1.CloudBaseQuotaStore(app.database(), limit);
     return {
         quota,
         market: new fixtures_1.FixtureMarketDataProvider(),

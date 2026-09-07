@@ -11,7 +11,7 @@ import {
   SYSTEM_PROMPT,
 } from "./constants";
 import { FixtureMarketDataProvider } from "./fixtures";
-import { CloudBaseQuotaStore, MemoryQuotaStore } from "./quota";
+import { CloudBaseQuotaStore, CloudBaseSqlQuotaStore, MemoryQuotaStore } from "./quota";
 import type { ChatMessage, MarketDataProvider, QuotaStore } from "./types";
 import { parseChatRequest, parseIsoDate, parsePeriod, parseSymbol, RequestValidationError } from "./validation";
 
@@ -245,7 +245,9 @@ function createCloudBaseDependencies(): AppDependencies {
   // optional rather than a prerequisite in the deployed function.
   const quota = process.env.ALLOW_EPHEMERAL_QUOTA === "true"
     ? new MemoryQuotaStore(limit)
-    : new CloudBaseQuotaStore(app.database(), limit);
+    : process.env.QUOTA_STORE === "sql"
+      ? new CloudBaseSqlQuotaStore(app.models, limit)
+      : new CloudBaseQuotaStore(app.database(), limit);
   return {
     quota,
     market: new FixtureMarketDataProvider(),

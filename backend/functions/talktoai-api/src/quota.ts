@@ -82,3 +82,44 @@ export class CloudBaseQuotaStore implements QuotaStore {
     return result.result;
   }
 }
+
+type CloudSqlModels = {
+  $runSQL?: (
+    sql: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ data?: { executeResultList?: Array<Record<string, unknown>> } }>;
+};
+
+const CONSUME_QUOTA_SQL = `select * from public.consume_talktoai_quota(
+  {{id}}, {{limit}}, {{updatedAt}}::timestamptz, {{resetAt}}::timestamptz
+)`;
+
+export class CloudBaseSqlQuotaStore implements QuotaStore {
+  constructor(
+    private readonly models: CloudSqlModels,
+    private readonly limit = DEFAULT_DAILY_AI_LIMIT,
+  ) {}
+
+  async consume(installationId: string, now: Date): Promise<QuotaDecision> {
+    if (!this.models.$runSQL) throw new Error("CloudBase SQL runner is unavailable");
+    const resetAt = nextShanghaiMidnight(now);
+    const response = await this.models.$runSQL(CONSUME_QUOTA_SQL, {
+      id: quotaDocumentId(installationId, now),
+      limit: this.limit,
+      updatedAt: now.toISOString(),
+      resetAt,
+    });
+    const row = response.data?.executeResultList?.[0];
+    const used = Number(row?.used);
+    const rawAllowed = row?.allowed;
+    const allowed = rawAllowed === true || rawAllowed === "true"
+      ? true
+      : rawAllowed === false || rawAllowed === "false"
+        ? false
+        : undefined;
+    if (!Number.isInteger(used) || used < 0 || typeof allowed !== "boolean") {
+      throw new Error("CloudBase SQL quota returned an invalid response");
+    }
+    return { allowed, used, limit: this.limit, resetAt };
+  }
+}

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CloudBaseQuotaStore = exports.MemoryQuotaStore = void 0;
+exports.CloudBaseSqlQuotaStore = exports.CloudBaseQuotaStore = exports.MemoryQuotaStore = void 0;
 exports.quotaDocumentId = quotaDocumentId;
 const node_crypto_1 = require("node:crypto");
 const constants_1 = require("./constants");
@@ -73,3 +73,38 @@ class CloudBaseQuotaStore {
     }
 }
 exports.CloudBaseQuotaStore = CloudBaseQuotaStore;
+const CONSUME_QUOTA_SQL = `select * from public.consume_talktoai_quota(
+  {{id}}, {{limit}}, {{updatedAt}}::timestamptz, {{resetAt}}::timestamptz
+)`;
+class CloudBaseSqlQuotaStore {
+    models;
+    limit;
+    constructor(models, limit = constants_1.DEFAULT_DAILY_AI_LIMIT) {
+        this.models = models;
+        this.limit = limit;
+    }
+    async consume(installationId, now) {
+        if (!this.models.$runSQL)
+            throw new Error("CloudBase SQL runner is unavailable");
+        const resetAt = nextShanghaiMidnight(now);
+        const response = await this.models.$runSQL(CONSUME_QUOTA_SQL, {
+            id: quotaDocumentId(installationId, now),
+            limit: this.limit,
+            updatedAt: now.toISOString(),
+            resetAt,
+        });
+        const row = response.data?.executeResultList?.[0];
+        const used = Number(row?.used);
+        const rawAllowed = row?.allowed;
+        const allowed = rawAllowed === true || rawAllowed === "true"
+            ? true
+            : rawAllowed === false || rawAllowed === "false"
+                ? false
+                : undefined;
+        if (!Number.isInteger(used) || used < 0 || typeof allowed !== "boolean") {
+            throw new Error("CloudBase SQL quota returned an invalid response");
+        }
+        return { allowed, used, limit: this.limit, resetAt };
+    }
+}
+exports.CloudBaseSqlQuotaStore = CloudBaseSqlQuotaStore;
