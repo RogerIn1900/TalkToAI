@@ -57,6 +57,35 @@ class TalkUiPolicyTest {
     }
 
     @Test
+    fun markdownTableIsRemovedFromTextAndConvertedToReusableChartData() {
+        val content = """
+            ## 指数表现
+            | 日期 | 上证 | 深证 |
+            | --- | ---: | ---: |
+            | 09-05 | 3100.5 | 9800 |
+            | 09-06 | 3112.0 | 9850 |
+
+            数据仅供参考。
+        """.trimIndent()
+
+        val blocks = TalkUiPolicy.markdownBlocks(content)
+        assertFalse(blocks.any { it.text.contains("|") || it.text.contains("---") })
+        val chart = TalkUiPolicy.chartData(content).single()
+        assertEquals("指数表现", chart.title)
+        assertEquals(listOf("09-05", "09-06"), chart.labels)
+        assertEquals(listOf("上证", "深证"), chart.series.map { it.name })
+        assertEquals(listOf(3100.5f, 3112.0f), chart.series.first().values)
+        assertEquals(TalkUiPolicy.CHART_LINE, TalkUiPolicy.normalizeChartType(null))
+        assertEquals(TalkUiPolicy.CHART_PIE, TalkUiPolicy.normalizeChartType(TalkUiPolicy.CHART_PIE))
+    }
+
+    @Test
+    fun malformedOrNonnumericMarkdownTablesDoNotBecomeCharts() {
+        val content = "| 名称 | 说明 |\n| --- | --- |\n| A | 上涨 |\n| B | 下跌 |"
+        assertTrue(TalkUiPolicy.chartData(content).isEmpty())
+    }
+
+    @Test
     fun appearanceValuesAreNormalized() {
         assertEquals(TalkUiPolicy.BUBBLE_SOFT, TalkUiPolicy.normalizeBubbleStyle("unknown"))
         assertEquals(TalkUiPolicy.BUBBLE_OUTLINE, TalkUiPolicy.normalizeBubbleStyle(TalkUiPolicy.BUBBLE_OUTLINE))

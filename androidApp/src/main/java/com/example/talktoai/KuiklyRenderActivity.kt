@@ -27,6 +27,7 @@ import com.example.talktoai.module.KRShareModule
 import org.json.JSONObject
 import com.example.talktoai.chat.AttachmentStore
 import com.example.talktoai.chat.ChatAttachment
+import com.example.talktoai.chart.TalkDataChartView
 import java.util.concurrent.Executors
 
 class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorDelegate {
@@ -113,7 +114,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalRenderView(kuiklyRenderExport)
         with(kuiklyRenderExport) {
-
+            renderViewExport("TalkDataChart", { context -> TalkDataChartView(context) })
         }
     }
 

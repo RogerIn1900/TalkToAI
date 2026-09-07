@@ -14,6 +14,7 @@ local.properties
 .tcb/
 /artifacts/*.apk
 /artifacts/debug-archive/
+/artifacts/runtime/
 *.so
 *.js
 !backend/functions/talktoai-api/dist/**/*.js

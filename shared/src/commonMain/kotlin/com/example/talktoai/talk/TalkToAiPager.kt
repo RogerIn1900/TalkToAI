@@ -10,6 +10,7 @@ import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewRef
 import com.tencent.kuikly.core.base.pagerId
+import com.tencent.kuikly.core.base.event.layoutFrameDidChange
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.directives.vfor
 import com.tencent.kuikly.core.module.NotifyModule
@@ -21,6 +22,7 @@ import com.tencent.kuikly.core.views.DivView
 import com.tencent.kuikly.core.views.Input
 import com.tencent.kuikly.core.views.InputView
 import com.tencent.kuikly.core.views.Scroller
+import com.tencent.kuikly.core.views.ScrollerView
 import com.tencent.kuikly.core.views.SelectableOption
 import com.tencent.kuikly.core.views.SelectionType
 import com.tencent.kuikly.core.views.Text
@@ -28,11 +30,14 @@ import com.tencent.kuikly.core.views.TextAlign
 import com.tencent.kuikly.core.views.TextInputState
 import com.tencent.kuikly.core.views.View
 import com.tencent.kuikly.core.views.compose.Button
+import com.tencent.kuikly.core.timer.setTimeout
+import com.tencent.kuikly.core.timer.clearTimeout
 import kotlin.math.max
 
 @Page("talk_to_ai", supportInLocal = true)
 internal class TalkToAiPager : BasePager() {
     private lateinit var inputRef: ViewRef<InputView>
+    internal lateinit var chatScrollerRef: ViewRef<ScrollerView<*, *>>
     internal val viewModel: TalkToAiViewModel by pagerId {
         TalkToAiViewModel(
             acquireModule(BridgeModule.MODULE_NAME),
@@ -218,10 +223,36 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
     ctx: TalkToAiPager,
     pageWidth: Float,
 ) {
+    var scrollTimeoutRef = ""
+    var viewportHeight = 0f
+    var measuredContentHeight = 0f
+    fun scheduleScroll() {
+        if (viewportHeight <= 0f || measuredContentHeight <= 0f) return
+        val requestVersion = ctx.viewModel.pendingScrollToLatestRequest() ?: return
+        if (scrollTimeoutRef.isNotEmpty()) ctx.clearTimeout(scrollTimeoutRef)
+        scrollTimeoutRef = ctx.setTimeout(SCROLL_TO_LATEST_DELAY_MS) {
+            if (ctx.viewModel.pendingScrollToLatestRequest() != requestVersion) return@setTimeout
+            val bottomOffset = (measuredContentHeight - viewportHeight - SCROLL_BOTTOM_SAFE_INSET).coerceAtLeast(0f)
+            ctx.chatScrollerRef.view?.setContentOffset(0f, bottomOffset, false)
+            ctx.viewModel.consumeScrollToLatestRequest(requestVersion)
+            scrollTimeoutRef = ""
+        }
+    }
     Scroller {
+        ref { ctx.chatScrollerRef = it }
         attr {
             flex(1f); padding(left = 12f, right = 12f, top = 8f, bottom = 8f)
             backgroundColor(ThemeColors.background)
+        }
+        event {
+            contentSizeChanged { _, contentHeight ->
+                measuredContentHeight = contentHeight
+                scheduleScroll()
+            }
+            layoutFrameDidChange { frame ->
+                viewportHeight = frame.height
+                scheduleScroll()
+            }
         }
         vif({ ctx.viewModel.messages.isEmpty() }) {
             View {
@@ -264,6 +295,9 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
     }
 }
 
+private const val SCROLL_TO_LATEST_DELAY_MS = 250
+private const val SCROLL_BOTTOM_SAFE_INSET = 2f
+
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
     ctx: TalkToAiPager,
     message: ChatMessageUi,
@@ -271,6 +305,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
 ) {
     val isUser = message.role == "user"
     val markdownBlocks = TalkUiPolicy.markdownBlocks(message.content)
+    val charts = if (isUser) emptyList() else TalkUiPolicy.chartData(message.content)
     var selectableBubble: ViewRef<DivView>? = null
     View {
         attr {
@@ -309,13 +344,15 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                     selectionColor(ThemeColors.accent)
                 }
                 event {
-                    selectStart { ctx.viewModel.selectedMessageId = message.id }
+                    selectStart { frame -> ctx.viewModel.openSelection(message.id, frame.y, frame.height) }
+                    selectChange { frame -> ctx.viewModel.openSelection(message.id, frame.y, frame.height) }
+                    selectEnd { frame -> ctx.viewModel.openSelection(message.id, frame.y, frame.height) }
                     selectCancel {
                         if (ctx.viewModel.selectedMessageId == message.id) ctx.viewModel.selectedMessageId = ""
                     }
                     longPress {
                         if (it.state == "start") {
-                            ctx.viewModel.selectedMessageId = message.id
+                            ctx.viewModel.openSelection(message.id, it.y, 0f)
                             selectableBubble?.view?.createSelection(it.x, it.y, SelectionType.WORD)
                         }
                     }
@@ -357,10 +394,14 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                     }
                 }
             }
+            charts.forEachIndexed { chartIndex, chart ->
+                messageChartCard(ctx, message.id, chartIndex, chart, pageWidth * 0.72f)
+            }
             vif({ ctx.viewModel.selectedMessageId == message.id }) {
                 View {
                     attr {
-                        flexDirectionRow(); alignItemsCenter(); marginTop(4f); padding(4f); borderRadius(9f)
+                        positionAbsolute(); left(0f); top(ctx.viewModel.selectionToolbarTop); zIndex(25, false)
+                        flexDirectionRow(); alignItemsCenter(); padding(4f); borderRadius(9f)
                         backgroundColor(ThemeColors.accent)
                     }
                     Text { attr { text("已选择"); margin(left = 5f, right = 5f); fontSize(10f); color(ThemeColors.onAccent) } }
@@ -392,13 +433,76 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                             message.id,
                         )
                         if (TalkUiPolicy.canRegenerate(ctx.viewModel.messages, message.id)) {
-                            messageActionButton(ctx, "重新生成", "message-regenerate", message.id, width = 72f)
+                            messageActionButton(
+                                ctx,
+                                if (message.status == "failed") "重新加载" else "重新生成",
+                                "message-regenerate",
+                                message.id,
+                                width = 72f,
+                            )
                         }
                     }
                 }
             }
         }
         if (isUser) messageAvatar(ctx, ai = false)
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageChartCard(
+    ctx: TalkToAiPager,
+    messageId: String,
+    chartIndex: Int,
+    chart: ChartDataUi,
+    width: Float,
+) {
+    val chartKey = "$messageId-$chartIndex"
+    View {
+        attr {
+            width(width); height(250f); marginTop(8f); padding(10f); borderRadius(12f)
+            backgroundColor(ThemeColors.surface)
+            border(Border(0.8f, BorderStyle.SOLID, ThemeColors.divider))
+        }
+        Text {
+            attr { text(chart.title); fontSize(13f); fontWeightSemiBold(); color(ThemeColors.onSurface) }
+        }
+        View {
+            attr { height(32f); marginTop(5f); flexDirectionRow() }
+            chartTypeButton(ctx, chartKey, "折线", TalkUiPolicy.CHART_LINE)
+            chartTypeButton(ctx, chartKey, "柱状", TalkUiPolicy.CHART_BAR)
+            chartTypeButton(ctx, chartKey, "饼状", TalkUiPolicy.CHART_PIE)
+        }
+        DataChart {
+            attr {
+                flex(1f); marginTop(4f)
+                chartType(ctx.viewModel.messageChartType(chartKey))
+                chartData(chart.toJson())
+                darkMode(ThemeColors.isNightMode)
+            }
+        }
+        Text {
+            attr {
+                text("横轴：${chart.xLabel} · 纵轴：${chart.yLabel}")
+                marginTop(3f); fontSize(9f); color(ThemeColors.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chartTypeButton(
+    ctx: TalkToAiPager,
+    chartKey: String,
+    title: String,
+    chartType: String,
+) {
+    Button {
+        attr {
+            val selected = ctx.viewModel.messageChartType(chartKey) == chartType
+            width(58f); height(28f); marginRight(6f); borderRadius(8f)
+            backgroundColor(if (selected) ThemeColors.accent else ThemeColors.surfaceVariant)
+            titleAttr { text(title); fontSize(10f); color(if (selected) ThemeColors.onAccent else ThemeColors.onSurfaceVariant) }
+        }
+        event { click { ctx.viewModel.selectMessageChartType(chartKey, chartType) } }
     }
 }
 
@@ -522,14 +626,14 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
         }
         View {
             attr { flexDirectionRow(); alignItemsCenter(); marginTop(10f) }
-            dateChoiceButton(if (ctx.viewModel.marketFrom.isEmpty()) "起始日期" else ctx.viewModel.marketFrom) {
+            dateChoiceButton({ ctx.viewModel.marketFrom.ifEmpty { "起始日期" } }) {
                 ctx.viewModel.openDatePicker(
                     TalkToAiViewModel.DATE_TARGET_FROM,
                     defaultMarketDate(ctx, dayOffset = -30),
                 )
             }
             Text { attr { text(" 至 "); fontSize(11f); color(ThemeColors.onSurfaceVariant) } }
-            dateChoiceButton(if (ctx.viewModel.marketTo.isEmpty()) "结束日期" else ctx.viewModel.marketTo) {
+            dateChoiceButton({ ctx.viewModel.marketTo.ifEmpty { "结束日期" } }) {
                 ctx.viewModel.openDatePicker(
                     TalkToAiViewModel.DATE_TARGET_TO,
                     defaultMarketDate(ctx),
@@ -540,11 +644,28 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
         Text {
             attr { text("K 线与成交量"); marginTop(14f); fontSize(15f); fontWeightSemiBold(); color(ThemeColors.onSurface) }
         }
+        Text {
+            attr {
+                text("横轴：交易日期 / 时间 · 左纵轴：价格 · 下方纵轴：成交量")
+                marginTop(4f); fontSize(10f); color(ThemeColors.onSurfaceVariant)
+            }
+        }
         chartLegend()
-        Canvas({
-            attr { flex(1f); marginTop(8f); backgroundColor(ThemeColors.background); borderRadius(10f) }
-        }) { canvas, width, height ->
-            drawMarketBars(canvas, width, height, ctx.viewModel.marketBars)
+        vif({ ctx.viewModel.marketBars.isNotEmpty() }) {
+            Canvas({
+                attr { flex(1f); marginTop(8f); backgroundColor(ThemeColors.background); borderRadius(10f) }
+            }) { canvas, width, height ->
+                drawMarketBars(canvas, width, height, ctx.viewModel.marketBars)
+            }
+        }
+        vif({ ctx.viewModel.marketBars.isEmpty() }) {
+            View {
+                attr {
+                    flex(1f); marginTop(8f); borderRadius(10f); backgroundColor(ThemeColors.background)
+                    alignItemsCenter(); justifyContentCenter()
+                }
+                Text { attr { text("所选日期没有可用行情数据"); fontSize(13f); color(ThemeColors.onSurfaceVariant) } }
+            }
         }
         Text {
             attr {
@@ -556,14 +677,14 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
 }
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.dateChoiceButton(
-    title: String,
+    title: () -> String,
     onClick: () -> Unit,
 ) {
     Button {
         attr {
             width(102f); height(34f); borderRadius(9f); backgroundColor(ThemeColors.background)
             border(Border(0.7f, BorderStyle.SOLID, ThemeColors.divider))
-            titleAttr { text("📅 $title"); fontSize(10f); color(ThemeColors.onSurface) }
+            titleAttr { text("📅 ${title()}"); fontSize(10f); color(ThemeColors.onSurface) }
         }
         event { click { onClick() } }
     }
@@ -766,7 +887,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingsPanel(ctx: 
         if (ctx.viewModel.settingsSection == TalkUiPolicy.SETTINGS_AI) {
             settingsCard("模型", "腾讯混元 hy3\n首版唯一模型，由 CloudBase 测试环境代理，密钥不进入 APK。")
             settingsCard("工具", "A 股行情查询（只读）\n行情问题会先调用 MarketDataProvider，再把带来源、时间和新鲜度的数据交给 AI。")
-            settingsCard("回答格式", "服务端输出 Markdown；客户端渲染标题、段落、列表和代码块。默认不显示原始 JSON/XML。")
+            settingsCard("回答格式", "客户端隐藏 Markdown 标记；数值表格自动转换为图表，默认折线并可切换柱状或饼状。")
             Button {
                 attr {
                     height(42f); marginTop(4f); borderRadius(12f); backgroundColor(ThemeColors.accent)
@@ -778,23 +899,23 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingsPanel(ctx: 
             settingsLabel("主题")
             View {
                 attr { flexDirectionRow(); marginBottom(16f) }
-                settingChoiceButton("跟随系统", ctx.viewModel.themeMode == "system") { ctx.viewModel.selectTheme("system") }
-                settingChoiceButton("浅色", ctx.viewModel.themeMode == "light") { ctx.viewModel.selectTheme("light") }
-                settingChoiceButton("深色", ctx.viewModel.themeMode == "dark") { ctx.viewModel.selectTheme("dark") }
+                settingChoiceButton("跟随系统", { ctx.viewModel.themeMode == "system" }) { ctx.viewModel.selectTheme("system") }
+                settingChoiceButton("浅色", { ctx.viewModel.themeMode == "light" }) { ctx.viewModel.selectTheme("light") }
+                settingChoiceButton("深色", { ctx.viewModel.themeMode == "dark" }) { ctx.viewModel.selectTheme("dark") }
             }
             settingsLabel("气泡样式")
             View {
                 attr { flexDirectionRow(); marginBottom(16f) }
-                settingChoiceButton("柔和", ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_SOFT) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_SOFT) }
-                settingChoiceButton("描边", ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_OUTLINE) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_OUTLINE) }
-                settingChoiceButton("紧凑", ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_COMPACT) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_COMPACT) }
+                settingChoiceButton("柔和", { ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_SOFT }) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_SOFT) }
+                settingChoiceButton("描边", { ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_OUTLINE }) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_OUTLINE) }
+                settingChoiceButton("紧凑", { ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_COMPACT }) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_COMPACT) }
             }
             settingsLabel("头像样式")
             View {
                 attr { flexDirectionRow(); marginBottom(16f) }
-                settingChoiceButton("文字", ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_TEXT) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_TEXT) }
-                settingChoiceButton("圆形", ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_ROUND) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_ROUND) }
-                settingChoiceButton("极简", ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_MINIMAL) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_MINIMAL) }
+                settingChoiceButton("文字", { ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_TEXT }) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_TEXT) }
+                settingChoiceButton("圆形", { ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_ROUND }) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_ROUND) }
+                settingChoiceButton("极简", { ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_MINIMAL }) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_MINIMAL) }
             }
             Text {
                 attr {
@@ -820,11 +941,12 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingsLabel(title
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingChoiceButton(
     title: String,
-    selected: Boolean,
+    isSelected: () -> Boolean,
     onClick: () -> Unit,
 ) {
     Button {
         attr {
+            val selected = isSelected()
             flex(1f); height(38f); marginRight(7f); borderRadius(10f)
             backgroundColor(if (selected) ThemeColors.accent else ThemeColors.surface)
             border(Border(if (selected) 1.5f else 0.7f, BorderStyle.SOLID, if (selected) ThemeColors.accent else ThemeColors.divider))

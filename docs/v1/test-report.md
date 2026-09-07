@@ -4,6 +4,21 @@
 
 ## 已执行验证
 
+### 最新优化回归（2026-09-07 22:00）
+
+本节覆盖下方历史验证中同名项目；本轮没有部署后端或连接物理真机。
+
+- `./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest :androidApp:assembleDebug :androidApp:lintDebug`：通过。shared 10/10、Android 11/11；lint 0 error、50 warning。
+- MPAndroidChart 已接入 AI 数值表格，默认折线，支持柱状/饼状切换；表格原始 Markdown 被转换。折线/柱状按钮及图形在 AVD 验证；最终饼图关闭切片文字以避免重叠，该微调未单独截图复验。证据：`artifacts/runtime-2026-09-07/ai-chart-line.png`、`ai-chart-bar.png`。
+- 主题切换后留在外观页，气泡/头像按钮即时选中；证据：同目录 `theme-stays.png`、`bubble-immediate.png`、`avatar-immediate.png`。
+- 日期确认立即刷新，日期标题即时更新；无数据时显示明确空态。区间 `2026-08-08` 至 `2026-09-08` 重复查询显示本地缓存，缓存文件 SHA-256 前后均为 `379dc3ed99d36564f503025cc588ab9619708696c31a787d5b185cccea9e2e47`；证据：`market-date-cache.png`。缓存命中在桥接层直接返回，保留服务端新鲜度字段。
+- 飞行模式下发送 `verify4`，输入清空、用户消息出现，显示网络连接失败和重新加载；使用滚动区实际尺寸修复发送后停在旧位置的问题。证据：`chat-offline-latest.png`。此前离线消息重启恢复及失败态也已核实。测试结束恢复网络，ping 成功。
+- 选区操作栏贴近选中文本，证据：`selection-near-text.png`。
+- 最终 APK 安装成功，`am start -W` 返回 `Status: ok`；冷启动耗时 8189ms。此前调试构建出现一次 `failed to complete startup` ANR，模拟器同期负载高，但尚不能确定根因；启动性能仍须专项排查，不宣称无 ANR。
+- APK 已更新到 `artifacts/TalkToAI-v1-debug.apk`，哈希见 `artifacts/SHA256SUMS.txt`。本轮可安装与上述功能通过，不代表以下产品阻塞全部解决。
+
+### 前序验证记录
+
 | 层级 | 命令/方法 | 结果 |
 |---|---|---|
 | 后端单元与接口 | `npm test` | 17/17 通过：SSE、引用、行情事件先于 AI、行情上下文注入、内存/SQL 配额映射、附件上传、行情校验、夹具过期规则、周线聚合 |
@@ -51,5 +66,5 @@
 5. 插件中心首版只提供能力状态与稳定边界，尚未实现第三方动态加载或远程插件目录。
 6. `@cloudbase/node-sdk 3.18.3` 的传递依赖审计仍报告 1 个 moderate、4 个 high；升级需等待官方依赖链修复或做隔离替换评估。
 7. 最终哈希 APK 尚缺物理真机复装与 UI 截图；当前完成的是模拟器最终版和真机候选版验证。
-8. 饼图、条形图、折线图组合与看板风格定制按需求留到后续版本；V1 已验证带坐标和图例的 K 线与同步成交量。第三方库结论见 `chart-library-evaluation.md`。
+8. AI 数值表格已支持折线/柱状/饼状切换；看板风格定制仍留后续。复杂非数值表格、混合单位、多系列柱状布局和负值饼图仍需完善；不能视为所有 Markdown 数据均已可靠图形化。第三方库结论见 `chart-library-evaluation.md`。
 9. 本轮以 Kuikly 原子编辑态同步消除了复现链路中的反复删除和旧值回填，并已通过 AVD 生命周期回归；仍缺 Macrobenchmark 的帧耗时数据，不能把功能回归等同于量化性能基准。

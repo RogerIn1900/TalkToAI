@@ -5,6 +5,7 @@
         <option name="DEPLOY" value="true" />
         <option name="DEPLOY_APK_FROM_BUNDLE" value="false" />
         <option name="DEPLOY_AS_INSTANT" value="false" />
+        <option name="ALWAYS_INSTALL_WITH_PM" value="true" />
         <option name="CLEAR_APP_STORAGE" value="false" />
         <option name="MODE" value="default_activity" />
         <option name="ACTIVITY" value="" />

@@ -26,6 +26,7 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import org.json.JSONObject
 import java.io.File
 import com.example.talktoai.diagnostics.DiagnosticLogStore
+import com.example.talktoai.market.MarketBarsCache
 
 class KRBridgeModule : KuiklyRenderBaseModule() {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -36,6 +37,9 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     private val draftWriteRunnable = Runnable { flushDraft() }
     private val diagnostics: DiagnosticLogStore by lazy {
         DiagnosticLogStore(requireNotNull(context?.applicationContext))
+    }
+    private val marketCache: MarketBarsCache by lazy {
+        MarketBarsCache(requireNotNull(context?.applicationContext))
     }
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? = when (method) {
@@ -206,13 +210,23 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     private fun marketBars(params: String?, callback: KuiklyRenderCallback?) {
         val json = JSONObject(params ?: "{}")
+        val symbol = json.optString("symbol", "600000.SH")
+        val period = json.optString("period", "day")
+        val from = json.optString("from").takeIf(String::isNotBlank)
+        val to = json.optString("to").takeIf(String::isNotBlank)
+        marketCache.get(symbol, period, from, to)?.let { cached ->
+            diagnostics.record("info", "market_bars_cache_hit", attributes = mapOf("period" to period))
+            callbackJson(callback, cached)
+            return
+        }
         api.getMarketBars(
-            json.optString("symbol", "600000.SH"),
-            json.optString("period", "day"),
-            json.optString("from").takeIf(String::isNotBlank),
-            json.optString("to").takeIf(String::isNotBlank),
+            symbol,
+            period,
+            from,
+            to,
             object : TalkToAiApi.JsonListener {
             override fun onSuccess(json: JSONObject) {
+                marketCache.put(symbol, period, from, to, json)
                 diagnostics.record("info", "market_bars_success", attributes = mapOf("period" to json.optString("period", "unknown")))
                 mainHandler.post { callbackJson(callback, json) }
             }

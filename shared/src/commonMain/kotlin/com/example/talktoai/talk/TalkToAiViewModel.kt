@@ -48,11 +48,15 @@ internal class TalkToAiViewModel(
     var avatarStyle: String by observable(TalkUiPolicy.AVATAR_TEXT)
     var likedMessageIds: List<String> by observable(emptyList())
     var selectedMessageId: String by observable("")
+    var selectionToolbarTop: Float by observable(0f)
+    var messageChartTypes: Map<String, String> by observable(emptyMap())
     var showSettingsPanel: Boolean by observable(false)
     var settingsSection: String by observable(TalkUiPolicy.SETTINGS_AI)
     var showInlineMarketCard: Boolean by observable(false)
     var inlineMarketSummary: String by observable("")
     var inlineMarketBars: List<MarketBarUi> by observable(emptyList())
+    private var scrollRequestVersion: Int = 1
+    private var consumedScrollRequestVersion: Int = 0
     private var notificationRef: CallbackRef? = null
     private var networkNotificationRef: CallbackRef? = null
 
@@ -122,10 +126,6 @@ internal class TalkToAiViewModel(
             status = "请等待附件上传完成，或移除上传失败的附件"
             return false
         }
-        if (!online) {
-            status = "无网络，消息未发送"
-            return false
-        }
         input = ""
         inputState = TextInputState("")
         bridge.callJsonRpc("talk.draft.set", JSONObject().put("text", ""), null)
@@ -135,7 +135,7 @@ internal class TalkToAiViewModel(
             inlineMarketBars = emptyList()
         }
         isGenerating = true
-        status = "正在生成…"
+        status = if (online) "正在生成…" else "消息已保存，正在等待网络响应…"
         sourceSummary = "来源：等待回答引用…"
         bridge.callJsonRpc("talk.chat.start", JSONObject().apply {
             put("sessionId", currentSessionId)
@@ -229,7 +229,7 @@ internal class TalkToAiViewModel(
     }
 
     fun retry() {
-        if (currentSessionId.isEmpty() || isGenerating || !online) return
+        if (currentSessionId.isEmpty() || isGenerating) return
         isGenerating = true
         status = "正在重试…"
         bridge.callJsonRpc("talk.chat.retry", JSONObject().put("sessionId", currentSessionId)) { response ->
@@ -276,6 +276,32 @@ internal class TalkToAiViewModel(
             likedMessageIds + messageId
         }
         bridge.toast(if (liked) "已点赞" else "已取消点赞")
+    }
+
+    fun openSelection(messageId: String, selectionTop: Float, selectionHeight: Float) {
+        selectedMessageId = messageId
+        selectionToolbarTop = (selectionTop + selectionHeight + SELECTION_TOOLBAR_GAP).coerceAtLeast(0f)
+    }
+
+    fun selectMessageChartType(messageId: String, chartType: String) {
+        val normalized = TalkUiPolicy.normalizeChartType(chartType)
+        messageChartTypes = messageChartTypes + (messageId to normalized)
+    }
+
+    fun messageChartType(messageId: String): String =
+        TalkUiPolicy.normalizeChartType(messageChartTypes[messageId])
+
+    fun consumeScrollToLatestRequest(version: Int): Boolean {
+        if (version != scrollRequestVersion || version <= consumedScrollRequestVersion) return false
+        consumedScrollRequestVersion = version
+        return true
+    }
+
+    fun pendingScrollToLatestRequest(): Int? =
+        scrollRequestVersion.takeIf { it > consumedScrollRequestVersion }
+
+    private fun requestScrollToLatest() {
+        scrollRequestVersion += 1
     }
 
     fun regenerate(messageId: String) {
@@ -506,7 +532,8 @@ internal class TalkToAiViewModel(
                     }
                 }
             }
-            marketSummary = "${root.optString("symbol")} · ${root.optString("freshness")}\n" +
+            val cacheLabel = if (root.optBoolean("clientCacheHit")) " · 本地缓存" else ""
+            marketSummary = "${root.optString("symbol")} · ${root.optString("freshness")}$cacheLabel\n" +
                 "数据：${root.optString("marketTime")}\n来源：${root.optString("source")}"
         }
     }
@@ -528,8 +555,15 @@ internal class TalkToAiViewModel(
 
     fun confirmMarketDate() {
         if (!TalkUiPolicy.isIsoDate(pendingMarketDate)) return
-        if (datePickerTarget == DATE_TARGET_TO) marketTo = pendingMarketDate else marketFrom = pendingMarketDate
+        if (datePickerTarget == DATE_TARGET_TO) {
+            marketTo = pendingMarketDate
+            if (marketFrom.isEmpty()) marketFrom = pendingMarketDate
+        } else {
+            marketFrom = pendingMarketDate
+            if (marketTo.isEmpty()) marketTo = pendingMarketDate
+        }
         showDatePicker = false
+        loadCustomMarket()
     }
 
     fun closeDatePicker() {
@@ -537,6 +571,7 @@ internal class TalkToAiViewModel(
     }
 
     private fun handleChatEvent(event: JSONObject) {
+        requestScrollToLatest()
         val type = event.optString("type")
         event.optJSONObject("session")?.let(::applySession)
         when (type) {
@@ -599,6 +634,7 @@ internal class TalkToAiViewModel(
     }
 
     private fun applySession(session: JSONObject) {
+        requestScrollToLatest()
         currentSessionId = session.optString("id")
         renameDraft = session.optString("title")
         val sessionMessages = session.optJSONArray("messages") ?: JSONArray()
@@ -759,6 +795,7 @@ internal class TalkToAiViewModel(
         private const val CHAT_EVENT = "talk.chat.event"
         private const val NETWORK_EVENT = "talk.network.event"
         private const val MAX_ATTACHMENTS = 5
+        private const val SELECTION_TOOLBAR_GAP = 6f
         const val DATE_TARGET_FROM = "from"
         const val DATE_TARGET_TO = "to"
     }
@@ -805,6 +842,34 @@ internal data class MarkdownBlockUi(
     val text: String,
 )
 
+internal data class ChartSeriesUi(
+    val name: String,
+    val values: List<Float>,
+)
+
+internal data class ChartDataUi(
+    val title: String,
+    val labels: List<String>,
+    val xLabel: String,
+    val yLabel: String,
+    val series: List<ChartSeriesUi>,
+) {
+    fun toJson(): String = JSONObject().apply {
+        put("title", title)
+        put("labels", JSONArray().apply { labels.forEach(::put) })
+        put("xLabel", xLabel)
+        put("yLabel", yLabel)
+        put("series", JSONArray().apply {
+            series.forEach { item ->
+                put(JSONObject().apply {
+                    put("name", item.name)
+                    put("values", JSONArray().apply { item.values.forEach(::put) })
+                })
+            }
+        })
+    }.toString()
+}
+
 internal object TalkUiPolicy {
     const val TAB_CHAT = "chat"
     const val TAB_MARKET = "market"
@@ -820,6 +885,9 @@ internal object TalkUiPolicy {
     const val MARKDOWN_BULLET = "bullet"
     const val MARKDOWN_CODE = "code"
     const val MARKDOWN_PARAGRAPH = "paragraph"
+    const val CHART_LINE = "line"
+    const val CHART_BAR = "bar"
+    const val CHART_PIE = "pie"
 
     fun displayContent(content: String, status: String): String = content.ifEmpty {
         when (status) {
@@ -915,7 +983,13 @@ internal object TalkUiPolicy {
                 code.clear()
             }
         }
-        content.lines().forEach { rawLine ->
+        val lines = content.lines()
+        val tableLines = markdownTableRanges(lines).flatMap { it.toList() }.toSet()
+        lines.forEachIndexed { lineIndex, rawLine ->
+            if (lineIndex in tableLines) {
+                flushParagraph()
+                return@forEachIndexed
+            }
             val line = rawLine.trimEnd()
             if (line.trimStart().startsWith("```")) {
                 if (inCode) flushCode() else flushParagraph()
@@ -944,6 +1018,67 @@ internal object TalkUiPolicy {
         return blocks
     }
 
+    fun chartData(content: String): List<ChartDataUi> {
+        val lines = content.lines()
+        return markdownTableRanges(lines).mapNotNull { range ->
+            val header = tableCells(lines[range.first])
+            val rows = (range.first + 2..range.last).map { tableCells(lines[it]) }.filter { it.size == header.size }
+            if (header.size < 2 || rows.size < 2) return@mapNotNull null
+            val numericColumns = header.indices.filter { column -> rows.all { parseChartNumber(it[column]) != null } }
+            if (numericColumns.isEmpty()) return@mapNotNull null
+            val labelColumn = header.indices.firstOrNull { it !in numericColumns } ?: 0
+            val valueColumns = numericColumns.filterNot { it == labelColumn }
+            if (valueColumns.isEmpty()) return@mapNotNull null
+            val titleLine = (range.first - 1 downTo 0)
+                .firstOrNull { lines[it].isNotBlank() && !lines[it].contains('|') }
+                ?.let { stripInlineMarkdown(lines[it].replace(HEADING_PREFIX, "").trim()) }
+                .orEmpty()
+                .ifEmpty { "数据图表" }
+            ChartDataUi(
+                title = titleLine,
+                labels = rows.map { stripInlineMarkdown(it[labelColumn]).take(MAX_CHART_LABEL_CHARS) },
+                xLabel = header[labelColumn].ifBlank { "类别" },
+                yLabel = valueColumns.joinToString(" / ") { header[it] }.ifBlank { "数值" },
+                series = valueColumns.map { column ->
+                    ChartSeriesUi(header[column].ifBlank { "数值" }, rows.map { parseChartNumber(it[column])!! })
+                },
+            )
+        }
+    }
+
+    fun normalizeChartType(type: String?): String = when (type) {
+        CHART_BAR, CHART_PIE -> type
+        else -> CHART_LINE
+    }
+
+    private fun markdownTableRanges(lines: List<String>): List<IntRange> {
+        val ranges = mutableListOf<IntRange>()
+        var index = 0
+        while (index + 1 < lines.size) {
+            if (lines[index].contains('|') && TABLE_SEPARATOR.matches(lines[index + 1].trim())) {
+                var end = index + 2
+                while (end < lines.size && lines[end].contains('|') && lines[end].isNotBlank()) end++
+                if (end - index >= 4) ranges += index until end
+                index = end
+            } else {
+                index++
+            }
+        }
+        return ranges
+    }
+
+    private fun tableCells(line: String): List<String> = line.trim().trim('|').split('|').map(String::trim)
+
+    private fun parseChartNumber(raw: String): Float? {
+        val normalized = stripInlineMarkdown(raw)
+            .replace(",", "")
+            .replace("%", "")
+            .replace("¥", "")
+            .replace("￥", "")
+            .trim()
+        return normalized.toFloatOrNull()
+    }
+
     private fun stripInlineMarkdown(content: String): String = content
         .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
         .replace(Regex("__(.+?)__"), "$1")
@@ -957,4 +1092,8 @@ internal object TalkUiPolicy {
 
     fun canRegenerate(messages: List<ChatMessageUi>, messageId: String): Boolean =
         messages.lastOrNull()?.let { it.id == messageId && it.role == "assistant" } == true
+
+    private val TABLE_SEPARATOR = Regex("^\\|?\\s*:?-{3,}:?\\s*(?:\\|\\s*:?-{3,}:?\\s*)+\\|?$")
+    private val HEADING_PREFIX = Regex("^#{1,6}\\s*")
+    private const val MAX_CHART_LABEL_CHARS = 16
 }
