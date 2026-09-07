@@ -1,1 +1,1 @@
-c14c41f821058393f5211e0ba3f3f178bf4a8d2ab5bf5b249ae566a1b63504ab  TalkToAI-v1-debug.apk
+c6114f6deb43746ab7302aec3decc4cc1c54e49f5a50a99136bd06e7b7f45e0a  TalkToAI-v1-debug.apk

@@ -5,7 +5,9 @@ import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.reactive.collection.ObservableList
 import com.tencent.kuikly.core.reactive.handler.observable
+import com.tencent.kuikly.core.reactive.handler.observableList
 
 internal class TalkToAiViewModel(
     private val bridge: BridgeModule,
@@ -13,6 +15,7 @@ internal class TalkToAiViewModel(
 ) {
     var input: String by observable("")
     var transcript: String by observable("你好，我是 TalkToAI。可以询问 A 股行情与基础概念。")
+    var messages: ObservableList<ChatMessageUi> by observableList()
     var status: String by observable("正在恢复会话…")
     var currentSessionId: String by observable("")
     var activeRequestId: String by observable("")
@@ -34,6 +37,11 @@ internal class TalkToAiViewModel(
     var pluginSummary: String by observable("正在读取插件状态…")
     var logSummary: String by observable("正在读取日志状态…")
     var sourceSummary: String by observable("来源：当前回答尚未提供外部引用")
+    var activeTab: String by observable(TalkUiPolicy.TAB_CHAT)
+    var showSidebar: Boolean by observable(false)
+    var bubbleStyle: String by observable(TalkUiPolicy.BUBBLE_SOFT)
+    var avatarStyle: String by observable(TalkUiPolicy.AVATAR_TEXT)
+    var likedMessageIds: List<String> by observable(emptyList())
     private var notificationRef: CallbackRef? = null
     private var networkNotificationRef: CallbackRef? = null
 
@@ -208,6 +216,60 @@ internal class TalkToAiViewModel(
         bridge.toast("已复制对话")
     }
 
+    fun copyMessage(messageId: String) {
+        val message = messages.firstOrNull { it.id == messageId } ?: return
+        bridge.copyToPasteboard(message.content)
+        bridge.toast("已复制本条消息")
+    }
+
+    fun toggleLike(messageId: String) {
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) return
+        val liked = !messages[index].liked
+        messages[index] = messages[index].copy(liked = liked)
+        likedMessageIds = if (!liked) {
+            likedMessageIds.filterNot { it == messageId }
+        } else {
+            likedMessageIds + messageId
+        }
+        bridge.toast(if (liked) "已点赞" else "已取消点赞")
+    }
+
+    fun regenerate(messageId: String) {
+        if (!TalkUiPolicy.canRegenerate(messages, messageId)) {
+            status = "首版仅支持重新生成最新一条 AI 回答"
+            return
+        }
+        retry()
+    }
+
+    fun selectTab(tab: String) {
+        activeTab = if (tab == TalkUiPolicy.TAB_MARKET) TalkUiPolicy.TAB_MARKET else TalkUiPolicy.TAB_CHAT
+        showSidebar = false
+    }
+
+    fun toggleSidebar() {
+        showSidebar = !showSidebar
+    }
+
+    fun cycleBubbleStyle() {
+        bubbleStyle = TalkUiPolicy.nextBubbleStyle(bubbleStyle)
+    }
+
+    fun cycleAvatarStyle() {
+        avatarStyle = TalkUiPolicy.nextAvatarStyle(avatarStyle)
+    }
+
+    fun modelNotice() {
+        status = "首版测试环境仅启用腾讯混元 hy3"
+        showSidebar = false
+    }
+
+    fun marketNotice() {
+        status = "首版仅支持 A 股，港股和美股将在 MarketDataProvider 扩展后接入"
+        showSidebar = false
+    }
+
     fun cycleTheme() {
         val next = when (themeMode) {
             "system" -> "light"
@@ -313,6 +375,7 @@ internal class TalkToAiViewModel(
         currentSessionId = ""
         renameDraft = ""
         transcript = "新会话已建立。"
+        messages.clear()
         status = "就绪"
         isGenerating = false
         activeRequestId = ""
@@ -405,10 +468,39 @@ internal class TalkToAiViewModel(
     private fun applySession(session: JSONObject) {
         currentSessionId = session.optString("id")
         renameDraft = session.optString("title")
-        val messages = session.optJSONArray("messages") ?: JSONArray()
+        val sessionMessages = session.optJSONArray("messages") ?: JSONArray()
+        val parsedMessages = buildList {
+            for (index in 0 until sessionMessages.length()) {
+                val message = sessionMessages.optJSONObject(index) ?: continue
+                val status = message.optString("status")
+                val attachments = message.optJSONArray("attachments") ?: JSONArray()
+                val citations = message.optJSONArray("citations") ?: JSONArray()
+                add(
+                    ChatMessageUi(
+                        id = message.optString("id").ifEmpty { "message-$index" },
+                        role = message.optString("role"),
+                        content = TalkUiPolicy.displayContent(message.optString("content"), status),
+                        status = status,
+                        attachmentNames = buildList {
+                            for (attachmentIndex in 0 until attachments.length()) {
+                                attachments.optJSONObject(attachmentIndex)?.optString("name")?.takeIf { it.isNotEmpty() }?.let(::add)
+                            }
+                        },
+                        citations = buildList {
+                            for (citationIndex in 0 until citations.length()) {
+                                citations.optString(citationIndex)?.takeIf { it.isNotEmpty() }?.let(::add)
+                            }
+                        },
+                        liked = message.optString("id") in likedMessageIds,
+                    ),
+                )
+            }
+        }
+        messages.clear()
+        messages.addAll(parsedMessages)
         transcript = buildString {
-            for (index in 0 until messages.length()) {
-                val message = messages.optJSONObject(index) ?: continue
+            for (index in 0 until sessionMessages.length()) {
+                val message = sessionMessages.optJSONObject(index) ?: continue
                 if (isNotEmpty()) append("\n\n")
                 append(if (message.optString("role") == "user") "我：" else "TalkToAI：")
                 val messageStatus = message.optString("status")
@@ -427,7 +519,7 @@ internal class TalkToAiViewModel(
                 }
             }
         }
-        val last = messages.optJSONObject(messages.length() - 1)
+        val last = sessionMessages.optJSONObject(sessionMessages.length() - 1)
         val lastStatus = last?.optString("status").orEmpty()
         val restoredCitations = last?.optJSONArray("citations")
         if (restoredCitations != null && restoredCitations.length() > 0) {
@@ -442,6 +534,7 @@ internal class TalkToAiViewModel(
         isGenerating = lastStatus == "streaming"
         if (isGenerating) activeRequestId = last?.optString("id").orEmpty()
         when (lastStatus) {
+            "complete" -> status = "会话已恢复 · 仅供信息参考，不构成投资建议"
             "failed" -> {
                 status = "上次生成失败，可重试"
                 sourceSummary = "来源：生成失败，未产生可核验引用"
@@ -560,3 +653,60 @@ internal data class SessionRowUi(
     val archived: Boolean,
     val updatedAtMs: Long,
 )
+
+internal data class ChatMessageUi(
+    val id: String,
+    val role: String,
+    val content: String,
+    val status: String,
+    val attachmentNames: List<String>,
+    val citations: List<String>,
+    val liked: Boolean = false,
+)
+
+internal object TalkUiPolicy {
+    const val TAB_CHAT = "chat"
+    const val TAB_MARKET = "market"
+    const val BUBBLE_SOFT = "soft"
+    const val BUBBLE_OUTLINE = "outline"
+    const val BUBBLE_COMPACT = "compact"
+    const val AVATAR_TEXT = "text"
+    const val AVATAR_ROUND = "round"
+    const val AVATAR_MINIMAL = "minimal"
+
+    fun displayContent(content: String, status: String): String = content.ifEmpty {
+        when (status) {
+            "streaming" -> "▋"
+            "failed" -> "生成失败，可点击重新生成"
+            "stopped" -> "生成已停止"
+            else -> ""
+        }
+    }
+
+    fun nextBubbleStyle(current: String): String = when (current) {
+        BUBBLE_SOFT -> BUBBLE_OUTLINE
+        BUBBLE_OUTLINE -> BUBBLE_COMPACT
+        else -> BUBBLE_SOFT
+    }
+
+    fun bubbleStyleLabel(style: String): String = when (style) {
+        BUBBLE_OUTLINE -> "描边"
+        BUBBLE_COMPACT -> "紧凑"
+        else -> "柔和"
+    }
+
+    fun nextAvatarStyle(current: String): String = when (current) {
+        AVATAR_TEXT -> AVATAR_ROUND
+        AVATAR_ROUND -> AVATAR_MINIMAL
+        else -> AVATAR_TEXT
+    }
+
+    fun avatarStyleLabel(style: String): String = when (style) {
+        AVATAR_ROUND -> "圆形"
+        AVATAR_MINIMAL -> "极简"
+        else -> "文字"
+    }
+
+    fun canRegenerate(messages: List<ChatMessageUi>, messageId: String): Boolean =
+        messages.lastOrNull()?.let { it.id == messageId && it.role == "assistant" } == true
+}

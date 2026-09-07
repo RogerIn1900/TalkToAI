@@ -63,6 +63,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         setContentView(R.layout.activity_hr)
         setupImmersiveMode()
         hrContainerView = findViewById(R.id.hr_container)
@@ -132,13 +133,12 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     private fun setupImmersiveMode() {
         window?.apply {
             addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            window?.statusBarColor = Color.TRANSPARENT
-            window?.decorView?.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            val baseFlags = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             val isNight = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
                 Configuration.UI_MODE_NIGHT_YES
-            decorView.systemUiVisibility = if (isNight) baseFlags else baseFlags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            // Edge-to-edge layout prevents adjustResize from resizing Kuikly's root view on IME display.
+            // Keep content inside system bars so the composer is always pushed above the keyboard.
+            statusBarColor = if (isNight) Color.BLACK else Color.WHITE
+            decorView.systemUiVisibility = if (isNight) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
             navigationBarColor = if (isNight) Color.BLACK else Color.WHITE
         }
 

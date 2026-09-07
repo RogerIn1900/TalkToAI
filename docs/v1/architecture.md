@@ -21,6 +21,15 @@ flowchart LR
 
 Kuikly View 不直接访问网络或持久层。ViewModel 只发出动作和维护可观察 UI 状态；Android Bridge 将动作交给 `ChatCoordinator`、`SessionStore` 与 HTTPS 客户端。历史 Host 模块已经移除，V1 仅保留 Android 原生能力桥与 CloudBase HTTPS 边界。
 
+## Android UI 状态模型
+
+- 主内容由“对话 / 行情”两个互斥 Tab 承载；侧边栏只负责导航和偏好入口，不承载行情或对话正文。
+- 会话消息解析为结构化 `ChatMessageUi`，存放在 Kuikly `ObservableList` 中，并通过 `vfor` 响应新增、流式更新和恢复；兼容性文本 `transcript` 不再作为气泡列表的数据源。
+- 用户与 AI 消息分别右、左对齐。复制、点赞和重新生成以消息 ID 定位；V1 只允许重新生成最新一条 AI 回答，避免从历史中间节点隐式分叉。
+- 气泡与头像样式是本地 UI 偏好，不改变持久化消息内容和服务端协议。
+- Android Activity 使用 `adjustResize`，并避免会阻断 IME 窗口缩放的全屏布局标志，保证输入框随软键盘上移。
+- V1 行情图仍为 K 线与同步成交量；饼图、条形图、折线图组成的可配置看板属于后续迭代。
+
 ## 后端职责
 
 - 验证请求大小、附件元数据和匿名安装标识。
