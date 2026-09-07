@@ -9,7 +9,7 @@
 | 后端单元与接口 | `npm test` | 17/17 通过：SSE、引用、行情事件先于 AI、行情上下文注入、内存/SQL 配额映射、附件上传、行情校验、夹具过期规则、周线聚合 |
 | 后端类型构建 | `npm run build` | 通过 |
 | Android 单元测试 | `./gradlew :androidApp:testDebugUnitTest` | 8/8 通过：SSE、HTTP 请求过滤、附件上传、会话与引用编解码、中断恢复 |
-| 共享 UI 规则单元测试 | `./gradlew :shared:testDebugUnitTest` | 6/6 通过：空内容回退、行情意图及误判边界、Markdown 分块、外观值归一化、气泡/头像样式轮换、仅最新 AI 回答可重新生成 |
+| 共享 UI 规则单元测试 | `./gradlew :shared:test` | 8/8 通过：原有 UI 规则，以及输入选择/组合区边界、闰年日期校验和行情轴标签 |
 | Android 静态检查 | `./gradlew :androidApp:lintDebug` | 0 error、49 warning；warning 为依赖升级/国际化等非阻断项 |
 | Android APK | `./gradlew :androidApp:assembleDebug` | 通过；制品大小与 SHA-256 见 `artifacts/SHA256SUMS.txt` |
 | CloudBase 测试部署 | `tcb fn deploy talktoai-api --force` | 成功 |
@@ -28,14 +28,19 @@
 | 键盘避让 | 模拟器打开系统输入法；`dumpsys input_method` | `mInputShown=true`、`mIsInputViewShown=true`，输入框位于键盘上方，见 `evidence/ui/keyboard-adjust-resize.png` |
 | 深色主题 | 侧边栏切换主题 | 页面、气泡、侧边栏及系统栏同步切换，见 `evidence/ui/dark-theme.png`；验证后恢复“跟随系统” |
 | 真机安装与启动 | `adb -s 10AG7H0CSP00C0D install --no-streaming -r -t ...` | 候选 APK 成功；包版本 1.0、targetSdk 34、进程存活；抽查日志未发现 FATAL EXCEPTION/ANR |
+| 外观状态与页面恢复 | 模拟器依次选择描边气泡、圆形头像和深色主题 | 按钮立即以勾选和高亮反馈；主题触发 Activity 重建后仍停留外观页；`SharedPreferences` 复核为 `dark/outline/round` |
+| 行情坐标与日期选择 | 模拟器行情页和 Kuikly `DatePicker` | 显示价格纵轴、日期/分时横轴、涨跌及成交量图例；起止日期改为日历弹窗，默认结束日为当天、起始日为前 30 天 |
+| 输入中断回归 | 输入 36 字符、连续删除 20 次、切到桌面、恢复应用、继续删除 8 次、发送，再分别等待 2 秒观察 | 文本稳定为 `abcdefgh`，发送后输入框持续为空；未出现反复删除、旧值回填、FATAL EXCEPTION 或应用 ANR |
+| 选择操作栏 | 长按 AI 文本 | 选区下方直接显示高对比度“已选择 / 复制选中 / 全选 / 取消”，普通消息操作在选择期间隐藏 |
 
 最终 Android 校验命令为：
 
 ```bash
-./gradlew :androidApp:lintDebug :androidApp:assembleDebug :shared:testDebugUnitTest :androidApp:testDebugUnitTest
+./gradlew :shared:test :androidApp:testDebugUnitTest :androidApp:assembleDebug
+./gradlew :androidApp:lintDebug
 ```
 
-结果：`BUILD SUCCESSFUL`，100 个任务（35 executed、65 up-to-date），Android 8/8、shared 6/6，共 14/14 个单元测试通过；后端另有 17/17 个测试通过。最终 APK 已安装到模拟器。真机曾成功安装紧邻最终版的候选 APK；当前 UI 优化版未重新安装真机，因此仍将真机复验列为剩余风险。保留候选版安装、包信息、进程与日志证据，不把锁屏截图当作应用 UI 验收证据。
+本轮结果：`BUILD SUCCESSFUL`；Android 8/8、shared 8/8，共 16/16 个唯一单元测试通过；后端另有 17/17 个测试通过；`lintDebug` 通过。当前 APK 已安装到 `emulator-5554`。真机曾成功安装紧邻最终版的候选 APK；本轮按用户要求只复验 Android Studio 虚拟机，因此未更新物理真机证据。
 
 ## 未完成与阻塞
 
@@ -46,5 +51,5 @@
 5. 插件中心首版只提供能力状态与稳定边界，尚未实现第三方动态加载或远程插件目录。
 6. `@cloudbase/node-sdk 3.18.3` 的传递依赖审计仍报告 1 个 moderate、4 个 high；升级需等待官方依赖链修复或做隔离替换评估。
 7. 最终哈希 APK 尚缺物理真机复装与 UI 截图；当前完成的是模拟器最终版和真机候选版验证。
-8. 饼图、条形图、折线图组合与看板风格定制按需求留到后续版本；V1 已验证 K 线与同步成交量。
-9. 本轮输入性能修复已消除主线程逐字符同步落盘，并降低流式刷新频率；由于 AVD 的 Gboard 在自动化期间自身发生 ANR，尚缺 Macrobenchmark 或稳定输入法环境下的长按删除帧耗时基准，不能把本轮自动化压力结果当作量化性能结论。
+8. 饼图、条形图、折线图组合与看板风格定制按需求留到后续版本；V1 已验证带坐标和图例的 K 线与同步成交量。第三方库结论见 `chart-library-evaluation.md`。
+9. 本轮以 Kuikly 原子编辑态同步消除了复现链路中的反复删除和旧值回填，并已通过 AVD 生命周期回归；仍缺 Macrobenchmark 的帧耗时数据，不能把功能回归等同于量化性能基准。

@@ -57,8 +57,9 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         "talk.draft.get" -> callback?.invoke(mapOf("ok" to true, "text" to draftPreferences().getString(DRAFT_KEY, "").orEmpty()))
         "talk.draft.set" -> saveDraft(params, callback)
         "talk.draft.flush" -> flushDraft().also { callback?.invoke(mapOf("ok" to true)) }
-        "talk.theme.get" -> callback?.invoke(mapOf("ok" to true, "mode" to themePreferences().get().wireName))
+        "talk.theme.get" -> getAppearance(callback)
         "talk.theme.set" -> setTheme(params, callback)
+        "talk.appearance.set" -> setAppearance(params, callback)
         "talk.plugins.status" -> pluginStatus(callback)
         "talk.logs.summary" -> callbackJson(callback, diagnostics.summary())
         "talk.feedback.export" -> exportFeedback(callback)
@@ -338,6 +339,17 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     private fun themePreferences(): ThemePreferences =
         ThemePreferences(requireNotNull(context?.applicationContext) { "Kuikly module context is unavailable" })
 
+    private fun getAppearance(callback: KuiklyRenderCallback?) {
+        val preferences = themePreferences()
+        callback?.invoke(mapOf(
+            "ok" to true,
+            "mode" to preferences.get().wireName,
+            "bubbleStyle" to preferences.getBubbleStyle(),
+            "avatarStyle" to preferences.getAvatarStyle(),
+            "resumeDestination" to preferences.consumeResumeDestination(),
+        ))
+    }
+
     private fun setTheme(params: String?, callback: KuiklyRenderCallback?) {
         val requested = JSONObject(params ?: "{}").optString("mode")
         val mode = ThemeMode.entries.firstOrNull { it.wireName == requested }
@@ -346,7 +358,22 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             return
         }
         callback?.invoke(mapOf("ok" to true, "mode" to mode.wireName))
-        mainHandler.post { themePreferences().set(mode) }
+        val resumeDestination = JSONObject(params ?: "{}").optString("resumeDestination")
+        mainHandler.post { themePreferences().set(mode, resumeDestination) }
+    }
+
+    private fun setAppearance(params: String?, callback: KuiklyRenderCallback?) {
+        val json = JSONObject(params ?: "{}")
+        val preferences = themePreferences()
+        preferences.setAppearance(
+            bubbleStyle = json.optString("bubbleStyle").takeIf(String::isNotBlank),
+            avatarStyle = json.optString("avatarStyle").takeIf(String::isNotBlank),
+        )
+        callback?.invoke(mapOf(
+            "ok" to true,
+            "bubbleStyle" to preferences.getBubbleStyle(),
+            "avatarStyle" to preferences.getAvatarStyle(),
+        ))
     }
 
     private fun toast(params: String?) {

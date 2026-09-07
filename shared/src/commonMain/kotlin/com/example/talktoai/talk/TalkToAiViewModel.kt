@@ -8,12 +8,14 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.collection.ObservableList
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.reactive.handler.observableList
+import com.tencent.kuikly.core.views.TextInputState
 
 internal class TalkToAiViewModel(
     private val bridge: BridgeModule,
     private val notify: NotifyModule,
 ) {
     var input: String by observable("")
+    var inputState: TextInputState by observable(TextInputState(""))
     var transcript: String by observable("你好，我是 TalkToAI。可以询问 A 股行情与基础概念。")
     var messages: ObservableList<ChatMessageUi> by observableList()
     var status: String by observable("正在恢复会话…")
@@ -27,6 +29,9 @@ internal class TalkToAiViewModel(
     var marketSymbol: String by observable("600000.SH")
     var marketFrom: String by observable("")
     var marketTo: String by observable("")
+    var showDatePicker: Boolean by observable(false)
+    var datePickerTarget: String by observable(DATE_TARGET_FROM)
+    var pendingMarketDate: String by observable("")
     var themeMode: String by observable("system")
     var sessions: List<SessionRowUi> by observable(emptyList())
     var showSessionPanel: Boolean by observable(false)
@@ -77,10 +82,22 @@ internal class TalkToAiViewModel(
             }
         }
         bridge.callJsonRpc("talk.theme.get", null) { response ->
-            if (response?.optBoolean("ok", false) == true) themeMode = response.optString("mode", "system")
+            if (response?.optBoolean("ok", false) == true) {
+                themeMode = TalkUiPolicy.normalizeTheme(response.optString("mode", "system"))
+                bubbleStyle = TalkUiPolicy.normalizeBubbleStyle(response.optString("bubbleStyle"))
+                avatarStyle = TalkUiPolicy.normalizeAvatarStyle(response.optString("avatarStyle"))
+                if (response.optString("resumeDestination") == TalkUiPolicy.SETTINGS_APPEARANCE) {
+                    settingsSection = TalkUiPolicy.SETTINGS_APPEARANCE
+                    showSidebar = false
+                    showSettingsPanel = true
+                }
+            }
         }
         bridge.callJsonRpc("talk.draft.get", null) { response ->
-            if (response?.optBoolean("ok", false) == true) input = response.optString("text")
+            if (response?.optBoolean("ok", false) == true) {
+                input = response.optString("text")
+                inputState = TextInputState(input)
+            }
         }
     }
 
@@ -91,9 +108,11 @@ internal class TalkToAiViewModel(
         networkNotificationRef = null
     }
 
-    fun updateInput(text: String) {
-        input = text
-        bridge.callJsonRpc("talk.draft.set", JSONObject().put("text", text), null)
+    fun updateInputState(state: TextInputState) {
+        val normalized = TalkUiPolicy.normalizeInputState(state)
+        inputState = normalized
+        input = normalized.text
+        bridge.callJsonRpc("talk.draft.set", JSONObject().put("text", normalized.text), null)
     }
 
     fun send(): Boolean {
@@ -108,6 +127,7 @@ internal class TalkToAiViewModel(
             return false
         }
         input = ""
+        inputState = TextInputState("")
         bridge.callJsonRpc("talk.draft.set", JSONObject().put("text", ""), null)
         if (TalkUiPolicy.isMarketIntent(text)) {
             showInlineMarketCard = true
@@ -287,10 +307,12 @@ internal class TalkToAiViewModel(
 
     fun selectBubbleStyle(style: String) {
         bubbleStyle = TalkUiPolicy.normalizeBubbleStyle(style)
+        bridge.callJsonRpc("talk.appearance.set", JSONObject().put("bubbleStyle", bubbleStyle), null)
     }
 
     fun selectAvatarStyle(style: String) {
         avatarStyle = TalkUiPolicy.normalizeAvatarStyle(style)
+        bridge.callJsonRpc("talk.appearance.set", JSONObject().put("avatarStyle", avatarStyle), null)
     }
 
     fun modelNotice() {
@@ -315,7 +337,11 @@ internal class TalkToAiViewModel(
 
     fun selectTheme(mode: String) {
         themeMode = TalkUiPolicy.normalizeTheme(mode)
-        bridge.callJsonRpc("talk.theme.set", JSONObject().put("mode", themeMode), null)
+        bridge.callJsonRpc(
+            "talk.theme.set",
+            JSONObject().put("mode", themeMode).put("resumeDestination", TalkUiPolicy.SETTINGS_APPEARANCE),
+            null,
+        )
     }
 
     fun openSettings(section: String) {
@@ -444,7 +470,7 @@ internal class TalkToAiViewModel(
             marketSummary = "请输入形如 600000.SH 或 000001.SZ 的 A 股代码"
             return
         }
-        if (customRange && (!isIsoDate(marketFrom) || !isIsoDate(marketTo) || marketFrom > marketTo)) {
+        if (customRange && (!TalkUiPolicy.isIsoDate(marketFrom) || !TalkUiPolicy.isIsoDate(marketTo) || marketFrom > marketTo)) {
             marketSummary = "自定义日期须为 YYYY-MM-DD，且起始日期不晚于结束日期"
             return
         }
@@ -470,6 +496,7 @@ internal class TalkToAiViewModel(
                 for (index in 0 until data.length()) {
                     data.optJSONObject(index)?.let { bar ->
                         add(MarketBarUi(
+                            time = bar.optString("time"),
                             open = bar.optDouble("open").toFloat(),
                             high = bar.optDouble("high").toFloat(),
                             low = bar.optDouble("low").toFloat(),
@@ -486,7 +513,28 @@ internal class TalkToAiViewModel(
 
     fun loadCustomMarket() = loadMarket("day", customRange = true)
 
-    private fun isIsoDate(value: String): Boolean = Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(value)
+    fun openDatePicker(target: String, fallbackDate: String) {
+        datePickerTarget = if (target == DATE_TARGET_TO) DATE_TARGET_TO else DATE_TARGET_FROM
+        pendingMarketDate = when (datePickerTarget) {
+            DATE_TARGET_TO -> marketTo.takeIf(TalkUiPolicy::isIsoDate)
+            else -> marketFrom.takeIf(TalkUiPolicy::isIsoDate)
+        } ?: fallbackDate
+        showDatePicker = true
+    }
+
+    fun updatePendingMarketDate(year: Int, month: Int, day: Int) {
+        pendingMarketDate = TalkUiPolicy.formatIsoDate(year, month, day)
+    }
+
+    fun confirmMarketDate() {
+        if (!TalkUiPolicy.isIsoDate(pendingMarketDate)) return
+        if (datePickerTarget == DATE_TARGET_TO) marketTo = pendingMarketDate else marketFrom = pendingMarketDate
+        showDatePicker = false
+    }
+
+    fun closeDatePicker() {
+        showDatePicker = false
+    }
 
     private fun handleChatEvent(event: JSONObject) {
         val type = event.optString("type")
@@ -536,6 +584,7 @@ internal class TalkToAiViewModel(
             for (index in 0 until data.length()) {
                 data.optJSONObject(index)?.let { bar ->
                     add(MarketBarUi(
+                        time = bar.optString("time"),
                         open = bar.optDouble("open").toFloat(),
                         high = bar.optDouble("high").toFloat(),
                         low = bar.optDouble("low").toFloat(),
@@ -710,6 +759,8 @@ internal class TalkToAiViewModel(
         private const val CHAT_EVENT = "talk.chat.event"
         private const val NETWORK_EVENT = "talk.network.event"
         private const val MAX_ATTACHMENTS = 5
+        const val DATE_TARGET_FROM = "from"
+        const val DATE_TARGET_TO = "to"
     }
 }
 
@@ -724,6 +775,7 @@ internal data class AttachmentUi(
 )
 
 internal data class MarketBarUi(
+    val time: String,
     val open: Float,
     val high: Float,
     val low: Float,
@@ -809,6 +861,31 @@ internal object TalkUiPolicy {
     fun normalizeTheme(mode: String): String = when (mode) {
         "light", "dark" -> mode
         else -> "system"
+    }
+
+    fun normalizeInputState(state: TextInputState): TextInputState = state.coerceToTextBounds()
+
+    fun isIsoDate(value: String): Boolean {
+        val match = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").matchEntire(value) ?: return false
+        val year = match.groupValues[1].toInt()
+        val month = match.groupValues[2].toInt()
+        val day = match.groupValues[3].toInt()
+        if (year !in 1970..9999 || month !in 1..12) return false
+        val february = if (year % 400 == 0 || year % 4 == 0 && year % 100 != 0) 29 else 28
+        val days = intArrayOf(31, february, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+        return day in 1..days[month - 1]
+    }
+
+    fun formatIsoDate(year: Int, month: Int, day: Int): String =
+        year.toString().padStart(4, '0') + "-" +
+            month.toString().padStart(2, '0') + "-" + day.toString().padStart(2, '0')
+
+    fun axisTimeLabel(value: String, preferTime: Boolean = false): String {
+        val trimmed = value.trim()
+        val timeMatch = Regex("(?:T|\\s)(\\d{2}:\\d{2})").find(trimmed)
+        if (preferTime && timeMatch != null) return timeMatch.groupValues[1]
+        val dateMatch = Regex("\\d{4}-(\\d{2})-(\\d{2})").find(trimmed)
+        return dateMatch?.let { "${it.groupValues[1]}-${it.groupValues[2]}" } ?: trimmed.take(8)
     }
 
     fun isMarketIntent(content: String): Boolean {

@@ -13,7 +13,10 @@ import com.tencent.kuikly.core.base.pagerId
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.directives.vfor
 import com.tencent.kuikly.core.module.NotifyModule
+import com.tencent.kuikly.core.module.CalendarModule
+import com.tencent.kuikly.core.module.ICalendar
 import com.tencent.kuikly.core.views.Canvas
+import com.tencent.kuikly.core.views.DatePicker
 import com.tencent.kuikly.core.views.DivView
 import com.tencent.kuikly.core.views.Input
 import com.tencent.kuikly.core.views.InputView
@@ -21,6 +24,8 @@ import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.SelectableOption
 import com.tencent.kuikly.core.views.SelectionType
 import com.tencent.kuikly.core.views.Text
+import com.tencent.kuikly.core.views.TextAlign
+import com.tencent.kuikly.core.views.TextInputState
 import com.tencent.kuikly.core.views.View
 import com.tencent.kuikly.core.views.compose.Button
 import kotlin.math.max
@@ -143,9 +148,9 @@ internal class TalkToAiPager : BasePager() {
                             attr {
                                 flex(1f); height(40f); placeholder("问行情、财报或股票基础知识")
                                 fontSize(15f); color(ThemeColors.onSurface)
-                                if (ctx.viewModel.input.isNotEmpty()) text(ctx.viewModel.input)
+                                textInputState { ctx.viewModel.inputState }
                             }
-                            event { textDidChange { ctx.viewModel.updateInput(it.text) } }
+                            event { textInputStateChange(isSyncEdit = true) { ctx.viewModel.updateInputState(it) } }
                         }
                         Button {
                             attr {
@@ -158,7 +163,7 @@ internal class TalkToAiPager : BasePager() {
                             event {
                                 click {
                                     if (ctx.viewModel.isGenerating) ctx.viewModel.stop()
-                                    else if (ctx.viewModel.send()) ctx.inputRef.view?.setText("")
+                                    else if (ctx.viewModel.send()) ctx.inputRef.view?.setTextInputState(TextInputState(""))
                                 }
                             }
                         }
@@ -176,6 +181,9 @@ internal class TalkToAiPager : BasePager() {
                 }
                 vif({ ctx.viewModel.showSidebar }) {
                     sidebarPanel(ctx, pageWidth)
+                }
+                vif({ ctx.viewModel.showDatePicker }) {
+                    marketDatePicker(ctx, pageWidth)
                 }
             }
         }
@@ -352,9 +360,10 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
             vif({ ctx.viewModel.selectedMessageId == message.id }) {
                 View {
                     attr {
-                        flexDirectionRow(); marginTop(5f); padding(4f); borderRadius(9f)
-                        backgroundColor(ThemeColors.onSurface)
+                        flexDirectionRow(); alignItemsCenter(); marginTop(4f); padding(4f); borderRadius(9f)
+                        backgroundColor(ThemeColors.accent)
                     }
+                    Text { attr { text("已选择"); margin(left = 5f, right = 5f); fontSize(10f); color(ThemeColors.onAccent) } }
                     selectionButton("复制选中") {
                         selectableBubble?.view?.getSelection { result ->
                             ctx.viewModel.copySelectedText(message.id, result.content)
@@ -368,21 +377,23 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                     }
                 }
             }
-            View {
-                attr {
-                    flexDirectionRow(); marginTop(5f); alignItemsCenter()
-                    if (isUser) justifyContentFlexEnd()
-                }
-                messageActionButton(ctx, "复制", "message-copy", message.id)
-                if (!isUser) {
-                    messageActionButton(
-                        ctx,
-                        if (message.liked) "已赞" else "点赞",
-                        "message-like",
-                        message.id,
-                    )
-                    if (TalkUiPolicy.canRegenerate(ctx.viewModel.messages, message.id)) {
-                        messageActionButton(ctx, "重新生成", "message-regenerate", message.id, width = 72f)
+            vif({ ctx.viewModel.selectedMessageId != message.id }) {
+                View {
+                    attr {
+                        flexDirectionRow(); marginTop(5f); alignItemsCenter()
+                        if (isUser) justifyContentFlexEnd()
+                    }
+                    messageActionButton(ctx, "复制", "message-copy", message.id)
+                    if (!isUser) {
+                        messageActionButton(
+                            ctx,
+                            if (message.liked) "已赞" else "点赞",
+                            "message-like",
+                            message.id,
+                        )
+                        if (TalkUiPolicy.canRegenerate(ctx.viewModel.messages, message.id)) {
+                            messageActionButton(ctx, "重新生成", "message-regenerate", message.id, width = 72f)
+                        }
                     }
                 }
             }
@@ -463,6 +474,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.inlineMarketCard(ct
                 color(ThemeColors.onSurfaceVariant)
             }
         }
+        chartLegend()
         Canvas({
             attr { height(150f); marginTop(8f); borderRadius(9f); backgroundColor(ThemeColors.background) }
         }) { canvas, width, height ->
@@ -510,20 +522,25 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
         }
         View {
             attr { flexDirectionRow(); alignItemsCenter(); marginTop(10f) }
-            Input {
-                attr { width(96f); height(32f); fontSize(11f); color(ThemeColors.onSurface); placeholder("起始 YYYY-MM-DD") }
-                event { textDidChange { ctx.viewModel.marketFrom = it.text } }
+            dateChoiceButton(if (ctx.viewModel.marketFrom.isEmpty()) "起始日期" else ctx.viewModel.marketFrom) {
+                ctx.viewModel.openDatePicker(
+                    TalkToAiViewModel.DATE_TARGET_FROM,
+                    defaultMarketDate(ctx, dayOffset = -30),
+                )
             }
             Text { attr { text(" 至 "); fontSize(11f); color(ThemeColors.onSurfaceVariant) } }
-            Input {
-                attr { width(96f); height(32f); fontSize(11f); color(ThemeColors.onSurface); placeholder("结束 YYYY-MM-DD") }
-                event { textDidChange { ctx.viewModel.marketTo = it.text } }
+            dateChoiceButton(if (ctx.viewModel.marketTo.isEmpty()) "结束日期" else ctx.viewModel.marketTo) {
+                ctx.viewModel.openDatePicker(
+                    TalkToAiViewModel.DATE_TARGET_TO,
+                    defaultMarketDate(ctx),
+                )
             }
             actionButton(ctx, "自定义", "market-custom", width = 64f)
         }
         Text {
             attr { text("K 线与成交量"); marginTop(14f); fontSize(15f); fontWeightSemiBold(); color(ThemeColors.onSurface) }
         }
+        chartLegend()
         Canvas({
             attr { flex(1f); marginTop(8f); backgroundColor(ThemeColors.background); borderRadius(10f) }
         }) { canvas, width, height ->
@@ -535,6 +552,106 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
                 marginTop(8f); fontSize(11f); color(ThemeColors.onSurfaceVariant)
             }
         }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.dateChoiceButton(
+    title: String,
+    onClick: () -> Unit,
+) {
+    Button {
+        attr {
+            width(102f); height(34f); borderRadius(9f); backgroundColor(ThemeColors.background)
+            border(Border(0.7f, BorderStyle.SOLID, ThemeColors.divider))
+            titleAttr { text("📅 $title"); fontSize(10f); color(ThemeColors.onSurface) }
+        }
+        event { click { onClick() } }
+    }
+}
+
+private fun defaultMarketDate(ctx: TalkToAiPager, dayOffset: Int = 0): String {
+    val calendar = ctx.acquireModule<CalendarModule>(CalendarModule.MODULE_NAME).newCalendarInstance()
+    if (dayOffset != 0) calendar.add(ICalendar.Field.DAY_OF_YEAR, dayOffset)
+    return TalkUiPolicy.formatIsoDate(
+        calendar.get(ICalendar.Field.YEAR),
+        calendar.get(ICalendar.Field.MONTH) + 1,
+        calendar.get(ICalendar.Field.DAY_OF_MONTH),
+    )
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDatePicker(
+    ctx: TalkToAiPager,
+    pageWidth: Float,
+) {
+    View {
+        attr {
+            positionAbsolute(); left(0f); right(0f); top(0f); bottom(0f)
+            zIndex(80, false); backgroundColor(ThemeColors.overlay)
+        }
+        event { click { ctx.viewModel.closeDatePicker() } }
+    }
+    View {
+        attr {
+            positionAbsolute(); left(18f); right(18f); top(120f); zIndex(81, false)
+            padding(16f); borderRadius(16f); backgroundColor(ThemeColors.surface)
+        }
+        Text {
+            attr {
+                text(if (ctx.viewModel.datePickerTarget == TalkToAiViewModel.DATE_TARGET_FROM) "选择起始日期" else "选择结束日期")
+                fontSize(17f); fontWeightSemiBold(); color(ThemeColors.onSurface)
+            }
+        }
+        val parts = ctx.viewModel.pendingMarketDate.split("-").mapNotNull(String::toIntOrNull)
+        DatePicker {
+            attr {
+                width(pageWidth - 68f); height(225f); marginTop(8f)
+                if (parts.size == 3) initialDate(parts[0], parts[1], parts[2])
+            }
+            event {
+                chooseEvent { picked ->
+                    picked.date?.let { ctx.viewModel.updatePendingMarketDate(it.year, it.month, it.day) }
+                }
+            }
+        }
+        Text {
+            attr {
+                text("已选 ${ctx.viewModel.pendingMarketDate}"); fontSize(12f); color(ThemeColors.onSurfaceVariant)
+            }
+        }
+        View {
+            attr { height(38f); marginTop(10f); flexDirectionRow(); justifyContentFlexEnd() }
+            Button {
+                attr {
+                    width(66f); height(36f); marginRight(8f); borderRadius(10f); backgroundColor(ThemeColors.surfaceVariant)
+                    titleAttr { text("取消"); fontSize(13f); color(ThemeColors.onSurface) }
+                }
+                event { click { ctx.viewModel.closeDatePicker() } }
+            }
+            Button {
+                attr {
+                    width(66f); height(36f); borderRadius(10f); backgroundColor(ThemeColors.accent)
+                    titleAttr { text("确定"); fontSize(13f); color(ThemeColors.onAccent) }
+                }
+                event { click { ctx.viewModel.confirmMarketDate() } }
+            }
+        }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chartLegend() {
+    View {
+        attr { height(24f); marginTop(5f); flexDirectionRow(); alignItemsCenter() }
+        legendItem("涨 / 阳线", Color(0xFFE5484D))
+        legendItem("跌 / 阴线", Color(0xFF16A34A))
+        legendItem("成交量", Color(0xFF64748B))
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.legendItem(title: String, color: Color) {
+    View {
+        attr { flexDirectionRow(); alignItemsCenter(); marginRight(12f) }
+        View { attr { size(8f, 8f); marginRight(4f); borderRadius(2f); backgroundColor(color) } }
+        Text { attr { text(title); fontSize(9f); color(ThemeColors.onSurfaceVariant) } }
     }
 }
 
@@ -710,7 +827,8 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingChoiceButton
         attr {
             flex(1f); height(38f); marginRight(7f); borderRadius(10f)
             backgroundColor(if (selected) ThemeColors.accent else ThemeColors.surface)
-            titleAttr { text(title); fontSize(12f); color(if (selected) ThemeColors.onAccent else ThemeColors.onSurface) }
+            border(Border(if (selected) 1.5f else 0.7f, BorderStyle.SOLID, if (selected) ThemeColors.accent else ThemeColors.divider))
+            titleAttr { text(if (selected) "✓ $title" else title); fontSize(12f); color(if (selected) ThemeColors.onAccent else ThemeColors.onSurface) }
         }
         event { click { onClick() } }
     }
@@ -906,20 +1024,39 @@ private fun drawMarketBars(
     bars: List<MarketBarUi>,
 ) {
     if (bars.isEmpty()) return
-    val priceHeight = height * 0.68f
-    val volumeTop = height * 0.75f
+    canvas.batchDraw = true
+    val left = 43f
+    val right = width - 8f
+    val priceTop = 10f
+    val priceBottom = height * 0.61f
+    val volumeTop = height * 0.72f
+    val volumeBottom = height - 22f
+    val plotWidth = max(right - left, 1f)
     val high = bars.maxOf { it.high }
     val low = bars.minOf { it.low }
     val range = max(high - low, 0.01f)
     val maxVolume = max(bars.maxOf { it.volume }, 1f)
-    val step = width / bars.size
+    val gridColor = Color(0x3364748B)
+    val labelColor = Color(0xFF64748B)
+    canvas.font(9f); canvas.fillStyle(labelColor); canvas.strokeStyle(gridColor); canvas.lineWidth(0.7f)
+    for (index in 0..2) {
+        val ratio = index / 2f
+        val y = priceTop + ratio * (priceBottom - priceTop)
+        canvas.beginPath(); canvas.moveTo(left, y); canvas.lineTo(right, y); canvas.stroke()
+        canvas.textAlign(TextAlign.RIGHT)
+        canvas.fillText(chartPriceLabel(high - ratio * range), left - 4f, y + 3f)
+    }
+    canvas.beginPath(); canvas.moveTo(left, volumeTop); canvas.lineTo(right, volumeTop); canvas.stroke()
+    canvas.textAlign(TextAlign.RIGHT); canvas.fillText("量", left - 4f, volumeTop + 3f)
+
+    val step = plotWidth / bars.size
     val candleWidth = max(step * 0.48f, 2f)
     bars.forEachIndexed { index, bar ->
-        val x = step * index + step / 2f
-        val highY = 5f + (high - bar.high) / range * (priceHeight - 10f)
-        val lowY = 5f + (high - bar.low) / range * (priceHeight - 10f)
-        val openY = 5f + (high - bar.open) / range * (priceHeight - 10f)
-        val closeY = 5f + (high - bar.close) / range * (priceHeight - 10f)
+        val x = left + step * index + step / 2f
+        val highY = priceTop + (high - bar.high) / range * (priceBottom - priceTop)
+        val lowY = priceTop + (high - bar.low) / range * (priceBottom - priceTop)
+        val openY = priceTop + (high - bar.open) / range * (priceBottom - priceTop)
+        val closeY = priceTop + (high - bar.close) / range * (priceBottom - priceTop)
         val rising = bar.close >= bar.open
         val color = if (rising) Color(0xFFE5484D) else Color(0xFF16A34A)
         canvas.strokeStyle(color); canvas.fillStyle(color); canvas.lineWidth(1f)
@@ -927,7 +1064,22 @@ private fun drawMarketBars(
         val top = minOf(openY, closeY)
         val bodyHeight = max(kotlin.math.abs(openY - closeY), 1.5f)
         drawRectangle(canvas, x - candleWidth / 2f, top, candleWidth, bodyHeight)
-        val volumeHeight = (bar.volume / maxVolume) * (height - volumeTop - 4f)
-        drawRectangle(canvas, x - candleWidth / 2f, height - volumeHeight, candleWidth, volumeHeight)
+        val volumeHeight = (bar.volume / maxVolume) * (volumeBottom - volumeTop)
+        canvas.fillStyle(Color(0xFF64748B))
+        drawRectangle(canvas, x - candleWidth / 2f, volumeBottom - volumeHeight, candleWidth, volumeHeight)
+    }
+    val labelIndices = listOf(0, bars.lastIndex / 2, bars.lastIndex).distinct()
+    val preferTimeLabels = bars.size > 1 && bars.map { it.time.take(10) }.distinct().size == 1
+    canvas.font(9f); canvas.fillStyle(labelColor)
+    labelIndices.forEachIndexed { position, index ->
+        canvas.textAlign(when (position) {
+            0 -> TextAlign.LEFT
+            labelIndices.lastIndex -> TextAlign.RIGHT
+            else -> TextAlign.CENTER
+        })
+        canvas.fillText(TalkUiPolicy.axisTimeLabel(bars[index].time, preferTimeLabels), left + step * index + step / 2f, height - 5f)
     }
 }
+
+private fun chartPriceLabel(value: Float): String =
+    ((value * 100f).toInt() / 100f).toString()

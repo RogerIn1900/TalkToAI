@@ -1,5 +1,6 @@
 package com.example.talktoai.talk
 
+import com.tencent.kuikly.core.views.TextInputState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -61,6 +62,29 @@ class TalkUiPolicyTest {
         assertEquals(TalkUiPolicy.BUBBLE_OUTLINE, TalkUiPolicy.normalizeBubbleStyle(TalkUiPolicy.BUBBLE_OUTLINE))
         assertEquals(TalkUiPolicy.AVATAR_MINIMAL, TalkUiPolicy.normalizeAvatarStyle(TalkUiPolicy.AVATAR_MINIMAL))
         assertEquals("system", TalkUiPolicy.normalizeTheme("unknown"))
+    }
+
+    @Test
+    fun inputStatePreservesValidSelectionAndCompositionAndClampsStaleOffsets() {
+        val composing = TextInputState("行情", selectionStart = 2, selectionEnd = 2, compositionStart = 0, compositionEnd = 2)
+        assertEquals(composing, TalkUiPolicy.normalizeInputState(composing))
+
+        assertEquals(
+            TextInputState("A", selectionStart = 1, selectionEnd = 1, compositionStart = -1, compositionEnd = -1),
+            TalkUiPolicy.normalizeInputState(
+                TextInputState("A", selectionStart = 9, selectionEnd = 5, compositionStart = -1, compositionEnd = 4),
+            ),
+        )
+    }
+
+    @Test
+    fun marketDatesValidateCalendarDaysAndAxisLabels() {
+        assertTrue(TalkUiPolicy.isIsoDate("2024-02-29"))
+        assertFalse(TalkUiPolicy.isIsoDate("2025-02-29"))
+        assertFalse(TalkUiPolicy.isIsoDate("2025-13-01"))
+        assertEquals("2026-09-07", TalkUiPolicy.formatIsoDate(2026, 9, 7))
+        assertEquals("09-04", TalkUiPolicy.axisTimeLabel("2026-09-04T15:00:00+08:00"))
+        assertEquals("09:30", TalkUiPolicy.axisTimeLabel("2026-09-04 09:30:00", preferTime = true))
     }
 
     private fun message(id: String, role: String) = ChatMessageUi(
