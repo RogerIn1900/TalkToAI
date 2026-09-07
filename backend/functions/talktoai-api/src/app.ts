@@ -12,7 +12,7 @@ import {
 } from "./constants";
 import { FixtureMarketDataProvider } from "./fixtures";
 import { CloudBaseQuotaStore, CloudBaseSqlQuotaStore, MemoryQuotaStore } from "./quota";
-import type { ChatMessage, MarketDataProvider, QuotaStore } from "./types";
+import type { Bar, ChatMessage, MarketDataProvider, MarketEnvelope, Period, QuotaStore } from "./types";
 import { parseChatRequest, parseIsoDate, parsePeriod, parseSymbol, RequestValidationError } from "./validation";
 
 interface AiTextStream {
@@ -110,8 +110,53 @@ function sse(res: ServerResponse, event: string, data: unknown): void {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-function toAiMessages(messages: ChatMessage[]): Array<{ role: string; content: string }> {
-  return [{ role: "system", content: SYSTEM_PROMPT }, ...messages];
+interface MarketRequest {
+  symbol: string;
+  period: Period;
+}
+
+function inferMarketRequest(messages: ChatMessage[]): MarketRequest | undefined {
+  const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  const mentionsMarket = /(大盘|行情|走势|指数|K\s*线|成交量|A\s*股)/i.test(content)
+    || /(?:今日数据|今天数据)/.test(content.replace(/\s/g, ""))
+    || /(?:今日|今天).*(?:市场|盘面|涨跌)/.test(content)
+    || /(?:市场|盘面|涨跌).*(?:今日|今天)/.test(content)
+    || /(?:today\s*market|market\s*today|a-?share|stock\s*index|kline)/i.test(content);
+  if (!mentionsMarket) return undefined;
+  const explicit = content.match(/\b([036]\d{5})(?:\.(SH|SZ))?\b/i);
+  const code = explicit?.[1];
+  const suffix = explicit?.[2]?.toUpperCase() ?? (code?.startsWith("6") ? "SH" : "SZ");
+  return {
+    symbol: code ? `${code}.${suffix}` : "000001.SH",
+    period: /分时|盘中/.test(content) ? "intraday" : /月线|月K/i.test(content) ? "month" : /周线|周K/i.test(content) ? "week" : "day",
+  };
+}
+
+function toAiMessages(
+  messages: ChatMessage[],
+  market?: MarketEnvelope<Bar[]>,
+): Array<{ role: string; content: string }> {
+  const marketContext = market
+    ? `\n\n${formatMarketContext(market)}`
+    : "";
+  // CloudBase hy3 expects a single leading system message.
+  return [{ role: "system", content: `${SYSTEM_PROMPT}${marketContext}` }, ...messages];
+}
+
+function formatMarketContext(market: MarketEnvelope<Bar[]>): string {
+  const rows = market.data.slice(-20).map((bar) =>
+    `${bar.time},O=${bar.open},H=${bar.high},L=${bar.low},C=${bar.close},V=${bar.volume}`,
+  );
+  return [
+    "MARKET_CONTEXT（只读工具结果，禁止推断为实时）",
+    `symbol=${market.symbol}`,
+    `source=${market.source}`,
+    `marketTime=${market.marketTime}`,
+    `fetchedAt=${market.fetchedAt}`,
+    `freshness=${market.freshness}`,
+    `freshnessReason=${market.freshnessReason}`,
+    ...rows,
+  ].join("\n");
 }
 
 async function handleChat(req: IncomingMessage, res: ServerResponse, deps: AppDependencies, requestId: string): Promise<void> {
@@ -131,9 +176,14 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, deps: AppDe
   sse(res, "meta", { requestId, quota: { used: quota.used, limit: quota.limit, resetAt: quota.resetAt } });
 
   try {
+    const marketRequest = inferMarketRequest(input.messages);
+    const market = marketRequest
+      ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
+      : undefined;
+    if (market) sse(res, "market", market);
     const result = await deps.createAiModel().streamText({
       model: process.env.AI_MODEL || DEFAULT_AI_MODEL,
-      messages: toAiMessages(input.messages),
+      messages: toAiMessages(input.messages, market),
     });
     let fullText = "";
     for await (const text of result.textStream) {

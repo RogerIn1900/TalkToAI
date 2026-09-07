@@ -5,15 +5,21 @@ import { createApp } from "../src/app";
 import { FixtureMarketDataProvider } from "../src/fixtures";
 import { MemoryQuotaStore } from "../src/quota";
 
-async function withServer(run: (baseUrl: string) => Promise<void>): Promise<void> {
+async function withServer(
+  run: (baseUrl: string) => Promise<void>,
+  onModelMessages: (messages: Array<{ role: string; content: string }>) => void = () => undefined,
+): Promise<void> {
   const app = createApp({
     quota: new MemoryQuotaStore(1),
     market: new FixtureMarketDataProvider(),
     createAiModel: () => ({
-      streamText: async () => ({
-        textStream: (async function* () { yield "测试 https://example.com/source"; })(),
-        usage: Promise.resolve({ totalTokens: 2 }),
-      }),
+      streamText: async ({ messages }) => {
+        onModelMessages(messages);
+        return {
+          textStream: (async function* () { yield "测试 https://example.com/source"; })(),
+          usage: Promise.resolve({ totalTokens: 2 }),
+        };
+      },
     }),
     uploadAttachment: async (cloudPath, content) => ({ fileID: `cloud://${cloudPath}?bytes=${content.length}` }),
     now: () => new Date("2026-09-05T01:00:00Z"),
@@ -37,6 +43,28 @@ test("health does not expose credentials", () => withServer(async (baseUrl) => {
   assert.equal(text.includes("CLOUDBASE"), false);
   assert.equal(JSON.parse(text).status, "ok");
 }));
+
+test("market intent streams chart data before AI and injects freshness context", () => {
+  let modelMessages: Array<{ role: string; content: string }> = [];
+  return withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        installationId: "install_1234567890abcdef",
+        conversationId: "conversation-market",
+        messages: [{ role: "user", content: "今日大盘数据怎么样" }],
+        stream: true,
+      }),
+    });
+    const text = await response.text();
+    assert.equal(response.status, 200);
+    assert.ok(text.indexOf("event: market") < text.indexOf("event: delta"));
+    assert.match(text, /000001\.SH/);
+    assert.match(text, /STALE/);
+    assert.equal(modelMessages.some((message) => message.content.includes("MARKET_CONTEXT") && message.content.includes("STALE")), true);
+  }, (messages) => { modelMessages = messages; });
+});
 
 test("market rejects unsupported symbol", () => withServer(async (baseUrl) => {
   const response = await fetch(`${baseUrl}/v1/market/quote?symbol=AAPL`);

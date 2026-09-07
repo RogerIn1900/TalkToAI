@@ -81,8 +81,42 @@ async function handleAttachmentUpload(req, res, deps, id, requestId) {
 function sse(res, event, data) {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
-function toAiMessages(messages) {
-    return [{ role: "system", content: constants_1.SYSTEM_PROMPT }, ...messages];
+function inferMarketRequest(messages) {
+    const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+    const mentionsMarket = /(大盘|行情|走势|指数|K\s*线|成交量|A\s*股)/i.test(content)
+        || /(?:今日数据|今天数据)/.test(content.replace(/\s/g, ""))
+        || /(?:今日|今天).*(?:市场|盘面|涨跌)/.test(content)
+        || /(?:市场|盘面|涨跌).*(?:今日|今天)/.test(content)
+        || /(?:today\s*market|market\s*today|a-?share|stock\s*index|kline)/i.test(content);
+    if (!mentionsMarket)
+        return undefined;
+    const explicit = content.match(/\b([036]\d{5})(?:\.(SH|SZ))?\b/i);
+    const code = explicit?.[1];
+    const suffix = explicit?.[2]?.toUpperCase() ?? (code?.startsWith("6") ? "SH" : "SZ");
+    return {
+        symbol: code ? `${code}.${suffix}` : "000001.SH",
+        period: /分时|盘中/.test(content) ? "intraday" : /月线|月K/i.test(content) ? "month" : /周线|周K/i.test(content) ? "week" : "day",
+    };
+}
+function toAiMessages(messages, market) {
+    const marketContext = market
+        ? `\n\n${formatMarketContext(market)}`
+        : "";
+    // CloudBase hy3 expects a single leading system message.
+    return [{ role: "system", content: `${constants_1.SYSTEM_PROMPT}${marketContext}` }, ...messages];
+}
+function formatMarketContext(market) {
+    const rows = market.data.slice(-20).map((bar) => `${bar.time},O=${bar.open},H=${bar.high},L=${bar.low},C=${bar.close},V=${bar.volume}`);
+    return [
+        "MARKET_CONTEXT（只读工具结果，禁止推断为实时）",
+        `symbol=${market.symbol}`,
+        `source=${market.source}`,
+        `marketTime=${market.marketTime}`,
+        `fetchedAt=${market.fetchedAt}`,
+        `freshness=${market.freshness}`,
+        `freshnessReason=${market.freshnessReason}`,
+        ...rows,
+    ].join("\n");
 }
 async function handleChat(req, res, deps, requestId) {
     const input = (0, validation_1.parseChatRequest)(await readJson(req));
@@ -100,9 +134,15 @@ async function handleChat(req, res, deps, requestId) {
     });
     sse(res, "meta", { requestId, quota: { used: quota.used, limit: quota.limit, resetAt: quota.resetAt } });
     try {
+        const marketRequest = inferMarketRequest(input.messages);
+        const market = marketRequest
+            ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
+            : undefined;
+        if (market)
+            sse(res, "market", market);
         const result = await deps.createAiModel().streamText({
             model: process.env.AI_MODEL || constants_1.DEFAULT_AI_MODEL,
-            messages: toAiMessages(input.messages),
+            messages: toAiMessages(input.messages, market),
         });
         let fullText = "";
         for await (const text of result.textStream) {

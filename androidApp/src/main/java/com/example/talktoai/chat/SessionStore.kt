@@ -20,11 +20,11 @@ class SessionStore(context: Context) {
         decode(preferences.getString(KEY_SESSIONS, null)).firstOrNull { it.id == sessionId && it.deletedAtMs == null }
     }
 
-    fun upsert(session: ChatSession) = synchronized(lock) {
+    fun upsert(session: ChatSession, durable: Boolean = true) = synchronized(lock) {
         val sessions = decode(preferences.getString(KEY_SESSIONS, null)).toMutableList()
         val index = sessions.indexOfFirst { it.id == session.id }
         if (index >= 0) sessions[index] = session else sessions.add(session)
-        persist(sessions)
+        persist(sessions, durable)
     }
 
     fun softDelete(sessionId: String, nowMs: Long) = updateSession(sessionId) { it.copy(deletedAtMs = nowMs, updatedAtMs = nowMs) }
@@ -56,9 +56,14 @@ class SessionStore(context: Context) {
         if (retained.size != sessions.size) persist(retained)
     }
 
-    private fun persist(sessions: List<ChatSession>) {
-        check(preferences.edit().putString(KEY_SESSIONS, encode(sessions).toString()).commit()) {
-            "Failed to persist chat sessions"
+    private fun persist(sessions: List<ChatSession>, durable: Boolean = true) {
+        val editor = preferences.edit().putString(KEY_SESSIONS, encode(sessions).toString())
+        if (durable) {
+            check(editor.commit()) { "Failed to persist chat sessions" }
+        } else {
+            // Streaming updates are frequent; apply() updates the in-memory value immediately and lets
+            // SharedPreferences coalesce disk writes. The terminal event always performs a durable commit.
+            editor.apply()
         }
     }
 

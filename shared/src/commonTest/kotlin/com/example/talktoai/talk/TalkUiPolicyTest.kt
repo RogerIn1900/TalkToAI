@@ -33,6 +33,36 @@ class TalkUiPolicyTest {
         assertFalse(TalkUiPolicy.canRegenerate(listOf(assistant, user), assistant.id))
     }
 
+    @Test
+    fun marketIntentRecognizesTodayAndChartQuestionsWithoutMatchingUnrelatedText() {
+        assertTrue(TalkUiPolicy.isMarketIntent("今日大盘数据怎么样"))
+        assertTrue(TalkUiPolicy.isMarketIntent("600000.SH 的 K 线和成交量"))
+        assertTrue(TalkUiPolicy.isMarketIntent("today market data"))
+        assertFalse(TalkUiPolicy.isMarketIntent("今天学习 Kotlin 数据类"))
+    }
+
+    @Test
+    fun markdownBlocksRenderHeadingsListsParagraphsAndCodeWithoutMarkers() {
+        val blocks = TalkUiPolicy.markdownBlocks("# 结论\n\n**风险**可控\n- 来源可靠\n```json\n{\"ok\":true}\n```")
+        assertEquals(
+            listOf(
+                MarkdownBlockUi(TalkUiPolicy.MARKDOWN_HEADING, "结论"),
+                MarkdownBlockUi(TalkUiPolicy.MARKDOWN_PARAGRAPH, "风险可控"),
+                MarkdownBlockUi(TalkUiPolicy.MARKDOWN_BULLET, "• 来源可靠"),
+                MarkdownBlockUi(TalkUiPolicy.MARKDOWN_CODE, "{\"ok\":true}"),
+            ),
+            blocks,
+        )
+    }
+
+    @Test
+    fun appearanceValuesAreNormalized() {
+        assertEquals(TalkUiPolicy.BUBBLE_SOFT, TalkUiPolicy.normalizeBubbleStyle("unknown"))
+        assertEquals(TalkUiPolicy.BUBBLE_OUTLINE, TalkUiPolicy.normalizeBubbleStyle(TalkUiPolicy.BUBBLE_OUTLINE))
+        assertEquals(TalkUiPolicy.AVATAR_MINIMAL, TalkUiPolicy.normalizeAvatarStyle(TalkUiPolicy.AVATAR_MINIMAL))
+        assertEquals("system", TalkUiPolicy.normalizeTheme("unknown"))
+    }
+
     private fun message(id: String, role: String) = ChatMessageUi(
         id = id,
         role = role,

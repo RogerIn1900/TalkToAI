@@ -32,6 +32,8 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     private val api = TalkToAiApi()
     private var coordinator: ChatCoordinator? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var pendingDraft: String? = null
+    private val draftWriteRunnable = Runnable { flushDraft() }
     private val diagnostics: DiagnosticLogStore by lazy {
         DiagnosticLogStore(requireNotNull(context?.applicationContext))
     }
@@ -54,6 +56,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         "talk.network.status" -> networkStatus(callback)
         "talk.draft.get" -> callback?.invoke(mapOf("ok" to true, "text" to draftPreferences().getString(DRAFT_KEY, "").orEmpty()))
         "talk.draft.set" -> saveDraft(params, callback)
+        "talk.draft.flush" -> flushDraft().also { callback?.invoke(mapOf("ok" to true)) }
         "talk.theme.get" -> callback?.invoke(mapOf("ok" to true, "mode" to themePreferences().get().wireName))
         "talk.theme.set" -> setTheme(params, callback)
         "talk.plugins.status" -> pluginStatus(callback)
@@ -63,6 +66,8 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(draftWriteRunnable)
+        flushDraft()
         coordinator?.cancelAll()
         networkCallback?.let { callback ->
             (context?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
@@ -317,9 +322,17 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         .getSharedPreferences(DRAFT_PREFERENCES, Context.MODE_PRIVATE)
 
     private fun saveDraft(params: String?, callback: KuiklyRenderCallback?) {
-        val text = JSONObject(params ?: "{}").optString("text").take(MAX_DRAFT_CHARS)
-        val ok = draftPreferences().edit().putString(DRAFT_KEY, text).commit()
-        callback?.invoke(mapOf("ok" to ok))
+        pendingDraft = JSONObject(params ?: "{}").optString("text").take(MAX_DRAFT_CHARS)
+        mainHandler.removeCallbacks(draftWriteRunnable)
+        mainHandler.postDelayed(draftWriteRunnable, DRAFT_WRITE_DEBOUNCE_MS)
+        callback?.invoke(mapOf("ok" to true))
+    }
+
+    private fun flushDraft() {
+        val text = pendingDraft ?: return
+        pendingDraft = null
+        // Synchronous commit on every key event caused visible stalls during long backspace.
+        draftPreferences().edit().putString(DRAFT_KEY, text).apply()
     }
 
     private fun themePreferences(): ThemePreferences =
@@ -396,5 +409,6 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         private const val DRAFT_PREFERENCES = "talktoai_draft_v1"
         private const val DRAFT_KEY = "text"
         private const val MAX_DRAFT_CHARS = 12_000
+        private const val DRAFT_WRITE_DEBOUNCE_MS = 250L
     }
 }

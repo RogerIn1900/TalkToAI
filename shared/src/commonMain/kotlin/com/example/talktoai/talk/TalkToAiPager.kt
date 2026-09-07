@@ -48,8 +48,6 @@ internal class TalkToAiPager : BasePager() {
 
     override fun body(): ViewBuilder {
         val ctx = this
-        val safeTop = pagerData.safeAreaInsets.top
-        val safeBottom = pagerData.safeAreaInsets.bottom
         val pageWidth = pagerData.pageViewWidth
         return {
             View {
@@ -57,7 +55,6 @@ internal class TalkToAiPager : BasePager() {
                     flex(1f)
                     flexDirectionColumn()
                     backgroundColor(ThemeColors.background)
-                    padding(top = safeTop, bottom = safeBottom)
                 }
 
                 View {
@@ -78,7 +75,7 @@ internal class TalkToAiPager : BasePager() {
                                 backgroundColor(ThemeColors.surfaceVariant)
                                 titleAttr { text("☰"); fontSize(20f); color(ThemeColors.onSurface) }
                             }
-                            event { click { ctx.viewModel.toggleSidebar() } }
+                            event { click { ctx.openSidebar() } }
                         }
                         Text {
                             attr {
@@ -169,16 +166,24 @@ internal class TalkToAiPager : BasePager() {
                 }
 
                 vif({ ctx.viewModel.showSessionPanel }) {
-                    sessionPanel(ctx, safeTop)
+                    sessionPanel(ctx)
                 }
                 vif({ ctx.viewModel.showToolsPanel }) {
-                    toolsPanel(ctx, safeTop)
+                    toolsPanel(ctx)
+                }
+                vif({ ctx.viewModel.showSettingsPanel }) {
+                    settingsPanel(ctx)
                 }
                 vif({ ctx.viewModel.showSidebar }) {
-                    sidebarPanel(ctx, safeTop, safeBottom, pageWidth)
+                    sidebarPanel(ctx, pageWidth)
                 }
             }
         }
+    }
+
+    private fun openSidebar() {
+        if (::inputRef.isInitialized) inputRef.view?.blur()
+        viewModel.openSidebar()
     }
 
 }
@@ -230,6 +235,9 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
                 }
             }
         }
+        vif({ ctx.viewModel.showInlineMarketCard }) {
+            inlineMarketCard(ctx)
+        }
         vfor({ ctx.viewModel.messages }) { message ->
             messageRow(ctx, message, pageWidth)
         }
@@ -254,6 +262,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
     pageWidth: Float,
 ) {
     val isUser = message.role == "user"
+    val markdownBlocks = TalkUiPolicy.markdownBlocks(message.content)
     var selectableBubble: ViewRef<DivView>? = null
     View {
         attr {
@@ -263,54 +272,107 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
         }
         if (!isUser) messageAvatar(ctx, ai = true)
         View {
-            ref { selectableBubble = it }
             attr {
                 if (isUser) maxWidth(pageWidth * 0.72f) else width(pageWidth * 0.72f)
-                if (ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_COMPACT) {
-                    padding(9f); borderRadius(8f)
-                } else {
-                    padding(12f); borderRadius(15f)
-                }
-                backgroundColor(if (isUser) ThemeColors.accent else ThemeColors.surface)
-                if (ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_OUTLINE && !isUser) {
-                    border(Border(1f, BorderStyle.SOLID, ThemeColors.accent))
-                }
-                selectable(SelectableOption.ENABLE)
-                selectionColor(ThemeColors.accent)
+                if (isUser) alignItemsFlexEnd()
             }
-            event {
-                longPress {
-                    if (it.state == "start") {
-                        selectableBubble?.view?.createSelection(it.x, it.y, SelectionType.WORD)
-                    }
-                }
-            }
-            Text {
+            View {
+                ref { selectableBubble = it }
                 attr {
-                    if (isUser) maxWidth(pageWidth * 0.72f - 24f) else width(pageWidth * 0.72f - 24f)
-                    text(message.content); fontSize(15f); lineHeight(22f)
-                    color(if (isUser) ThemeColors.onAccent else ThemeColors.onSurface)
+                    if (isUser) maxWidth(pageWidth * 0.72f) else width(pageWidth * 0.72f)
+                    if (ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_COMPACT) {
+                        padding(9f); borderRadius(7f)
+                    } else if (ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_OUTLINE) {
+                        padding(12f); borderRadius(5f)
+                    } else {
+                        padding(12f); borderRadius(16f)
+                    }
+                    backgroundColor(
+                        if (isUser && ctx.viewModel.bubbleStyle != TalkUiPolicy.BUBBLE_OUTLINE) {
+                            ThemeColors.accent
+                        } else {
+                            ThemeColors.surface
+                        },
+                    )
+                    if (ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_OUTLINE) {
+                        border(Border(1f, BorderStyle.SOLID, ThemeColors.accent))
+                    }
+                    selectable(SelectableOption.ENABLE)
+                    selectionColor(ThemeColors.accent)
                 }
-            }
-            if (message.attachmentNames.isNotEmpty()) {
-                Text {
-                    attr {
-                        text(message.attachmentNames.joinToString(separator = "\n") { "📎 $it" })
-                        marginTop(8f); fontSize(12f)
-                        color(if (isUser) ThemeColors.onAccent else ThemeColors.onSurfaceVariant)
+                event {
+                    selectStart { ctx.viewModel.selectedMessageId = message.id }
+                    selectCancel {
+                        if (ctx.viewModel.selectedMessageId == message.id) ctx.viewModel.selectedMessageId = ""
+                    }
+                    longPress {
+                        if (it.state == "start") {
+                            ctx.viewModel.selectedMessageId = message.id
+                            selectableBubble?.view?.createSelection(it.x, it.y, SelectionType.WORD)
+                        }
+                    }
+                }
+                markdownBlocks.forEachIndexed { index, block ->
+                    Text {
+                        attr {
+                            if (isUser) maxWidth(pageWidth * 0.72f - 24f) else width(pageWidth * 0.72f - 24f)
+                            text(block.text)
+                            fontSize(if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) 17f else if (block.kind == TalkUiPolicy.MARKDOWN_CODE) 13f else 15f)
+                            lineHeight(if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) 24f else 22f)
+                            if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) fontWeightSemiBold()
+                            if (index > 0) marginTop(6f)
+                            color(
+                                if (isUser && ctx.viewModel.bubbleStyle != TalkUiPolicy.BUBBLE_OUTLINE) {
+                                    ThemeColors.onAccent
+                                } else {
+                                    ThemeColors.onSurface
+                                },
+                            )
+                        }
+                    }
+                }
+                if (message.attachmentNames.isNotEmpty()) {
+                    Text {
+                        attr {
+                            text(message.attachmentNames.joinToString(separator = "\n") { "📎 $it" })
+                            marginTop(8f); fontSize(12f)
+                            color(if (isUser) ThemeColors.onAccent else ThemeColors.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (!isUser && message.citations.isNotEmpty()) {
+                    Text {
+                        attr {
+                            text("来源\n${message.citations.joinToString("\n")}")
+                            marginTop(8f); fontSize(11f); lineHeight(16f); color(ThemeColors.onSurfaceVariant)
+                        }
                     }
                 }
             }
-            if (!isUser && message.citations.isNotEmpty()) {
-                Text {
+            vif({ ctx.viewModel.selectedMessageId == message.id }) {
+                View {
                     attr {
-                        text("来源\n${message.citations.joinToString("\n")}")
-                        marginTop(8f); fontSize(11f); lineHeight(16f); color(ThemeColors.onSurfaceVariant)
+                        flexDirectionRow(); marginTop(5f); padding(4f); borderRadius(9f)
+                        backgroundColor(ThemeColors.onSurface)
+                    }
+                    selectionButton("复制选中") {
+                        selectableBubble?.view?.getSelection { result ->
+                            ctx.viewModel.copySelectedText(message.id, result.content)
+                            selectableBubble?.view?.clearSelection()
+                        }
+                    }
+                    selectionButton("全选") { selectableBubble?.view?.createSelectionAll() }
+                    selectionButton("取消") {
+                        selectableBubble?.view?.clearSelection()
+                        ctx.viewModel.selectedMessageId = ""
                     }
                 }
             }
             View {
-                attr { flexDirectionRow(); marginTop(8f); alignItemsCenter() }
+                attr {
+                    flexDirectionRow(); marginTop(5f); alignItemsCenter()
+                    if (isUser) justifyContentFlexEnd()
+                }
                 messageActionButton(ctx, "复制", "message-copy", message.id)
                 if (!isUser) {
                     messageActionButton(
@@ -326,6 +388,19 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
             }
         }
         if (isUser) messageAvatar(ctx, ai = false)
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.selectionButton(
+    title: String,
+    onClick: () -> Unit,
+) {
+    Button {
+        attr {
+            width(62f); height(28f); marginRight(3f); borderRadius(7f); backgroundColor(ThemeColors.onSurface)
+            titleAttr { text(title); fontSize(10f); color(ThemeColors.surface) }
+        }
+        event { click { onClick() } }
     }
 }
 
@@ -366,6 +441,37 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageActionButton
                     "message-like" -> ctx.viewModel.toggleLike(payload)
                     "message-regenerate" -> ctx.viewModel.regenerate(payload)
                 }
+            }
+        }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.inlineMarketCard(ctx: TalkToAiPager) {
+    View {
+        attr {
+            marginBottom(12f); padding(12f); borderRadius(14f); backgroundColor(ThemeColors.surface)
+            border(Border(0.8f, BorderStyle.SOLID, ThemeColors.divider))
+        }
+        Text {
+            attr {
+                text("行情工具 · AI 解读依据"); fontSize(14f); fontWeightSemiBold(); color(ThemeColors.onSurface)
+            }
+        }
+        Text {
+            attr {
+                text(ctx.viewModel.inlineMarketSummary); marginTop(5f); fontSize(11f); lineHeight(17f)
+                color(ThemeColors.onSurfaceVariant)
+            }
+        }
+        Canvas({
+            attr { height(150f); marginTop(8f); borderRadius(9f); backgroundColor(ThemeColors.background) }
+        }) { canvas, width, height ->
+            drawMarketBars(canvas, width, height, ctx.viewModel.inlineMarketBars)
+        }
+        Text {
+            attr {
+                text("图表先于模型回答返回；过期或测试数据不会标记为实时。")
+                marginTop(6f); fontSize(10f); color(ThemeColors.onSurfaceVariant)
             }
         }
     }
@@ -421,33 +527,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
         Canvas({
             attr { flex(1f); marginTop(8f); backgroundColor(ThemeColors.background); borderRadius(10f) }
         }) { canvas, width, height ->
-            val bars = ctx.viewModel.marketBars
-            if (bars.isNotEmpty()) {
-                val priceHeight = height * 0.68f
-                val volumeTop = height * 0.75f
-                val high = bars.maxOf { it.high }
-                val low = bars.minOf { it.low }
-                val range = max(high - low, 0.01f)
-                val maxVolume = max(bars.maxOf { it.volume }, 1f)
-                val step = width / bars.size
-                val candleWidth = max(step * 0.48f, 2f)
-                bars.forEachIndexed { index, bar ->
-                    val x = step * index + step / 2f
-                    val highY = 5f + (high - bar.high) / range * (priceHeight - 10f)
-                    val lowY = 5f + (high - bar.low) / range * (priceHeight - 10f)
-                    val openY = 5f + (high - bar.open) / range * (priceHeight - 10f)
-                    val closeY = 5f + (high - bar.close) / range * (priceHeight - 10f)
-                    val rising = bar.close >= bar.open
-                    val color = if (rising) Color(0xFFE5484D) else Color(0xFF16A34A)
-                    canvas.strokeStyle(color); canvas.fillStyle(color); canvas.lineWidth(1f)
-                    canvas.beginPath(); canvas.moveTo(x, highY); canvas.lineTo(x, lowY); canvas.stroke()
-                    val top = minOf(openY, closeY)
-                    val bodyHeight = max(kotlin.math.abs(openY - closeY), 1.5f)
-                    drawRectangle(canvas, x - candleWidth / 2f, top, candleWidth, bodyHeight)
-                    val volumeHeight = (bar.volume / maxVolume) * (height - volumeTop - 4f)
-                    drawRectangle(canvas, x - candleWidth / 2f, height - volumeHeight, candleWidth, volumeHeight)
-                }
-            }
+            drawMarketBars(canvas, width, height, ctx.viewModel.marketBars)
         }
         Text {
             attr {
@@ -460,8 +540,6 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sidebarPanel(
     ctx: TalkToAiPager,
-    safeTop: Float,
-    safeBottom: Float,
     pageWidth: Float,
 ) {
     View {
@@ -469,12 +547,12 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sidebarPanel(
             positionAbsolute(); left(0f); right(0f); top(0f); bottom(0f)
             zIndex(60, false); backgroundColor(ThemeColors.overlay)
         }
-        event { click { ctx.viewModel.toggleSidebar() } }
+        event { click { ctx.viewModel.closeSidebar() } }
     }
     View {
         attr {
             positionAbsolute(); left(0f); top(0f); bottom(0f); width(pageWidth * 0.84f)
-            zIndex(61, false); padding(top = safeTop + 14f, bottom = safeBottom + 14f)
+            zIndex(61, false); padding(top = 14f, bottom = 14f)
             backgroundColor(ThemeColors.surface); flexDirectionColumn()
         }
         View {
@@ -488,25 +566,15 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sidebarPanel(
         Scroller {
             attr { flex(1f); padding(left = 12f, right = 12f) }
             sidebarEntry(ctx, "💬", "会话选择", "管理、改名、归档与删除", "sessions")
-            sidebarEntry(ctx, "🧠", "模型选择", "腾讯混元 hy3（首版唯一）", "model")
-            sidebarEntry(ctx, "🛠", "工具选择", "A 股行情查询（只读）", "market-tab")
-            sidebarEntry(ctx, "📈", "股市选择", "A 股（首版唯一）", "market")
+            sidebarEntry(ctx, "🧠", "AI 与工具", "模型、只读工具和回答格式", "ai-settings")
+            sidebarEntry(ctx, "📈", "行情中心", "A 股查询、周期和图表", "market-tab")
             sidebarEntry(ctx, "🔌", "插件和诊断", "插件状态、日志与反馈包", "tools")
             sidebarEntry(
                 ctx,
-                "🙂",
-                "自定义图标",
-                TalkUiPolicy.avatarStyleLabel(ctx.viewModel.avatarStyle),
-                "avatar-style",
-            )
-            sidebarEntry(ctx, "🔎", "查询", "打开行情查询中心", "market-tab")
-            sidebarEntry(ctx, "◐", "主题选择", ctx.viewModel.themeLabel(), "theme")
-            sidebarEntry(
-                ctx,
-                "◻",
-                "气泡样式",
-                TalkUiPolicy.bubbleStyleLabel(ctx.viewModel.bubbleStyle),
-                "bubble-style",
+                "◐",
+                "外观设置",
+                "${ctx.viewModel.themeLabel()} · ${TalkUiPolicy.bubbleStyleLabel(ctx.viewModel.bubbleStyle)}气泡",
+                "appearance-settings",
             )
         }
         View {
@@ -539,13 +607,10 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sidebarEntry(
             click {
                 when (action) {
                     "sessions" -> { ctx.viewModel.showSidebar = false; ctx.viewModel.toggleSessionPanel() }
-                    "model" -> ctx.viewModel.modelNotice()
-                    "market" -> ctx.viewModel.marketNotice()
+                    "ai-settings" -> ctx.viewModel.openSettings(TalkUiPolicy.SETTINGS_AI)
+                    "appearance-settings" -> ctx.viewModel.openSettings(TalkUiPolicy.SETTINGS_APPEARANCE)
                     "market-tab" -> ctx.viewModel.selectTab(TalkUiPolicy.TAB_MARKET)
                     "tools" -> { ctx.viewModel.showSidebar = false; ctx.viewModel.toggleToolsPanel() }
-                    "theme" -> ctx.viewModel.cycleTheme()
-                    "bubble-style" -> ctx.viewModel.cycleBubbleStyle()
-                    "avatar-style" -> ctx.viewModel.cycleAvatarStyle()
                 }
             }
         }
@@ -559,10 +624,102 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sidebarEntry(
     }
 }
 
-private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.toolsPanel(ctx: TalkToAiPager, safeTop: Float) {
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingsPanel(ctx: TalkToAiPager) {
     View {
         attr {
-            positionAbsolute(); left(0f); right(0f); top(safeTop + 54f); bottom(0f)
+            positionAbsolute(); left(0f); right(0f); top(54f); bottom(0f)
+            zIndex(46, false); padding(16f); backgroundColor(ThemeColors.background); flexDirectionColumn()
+        }
+        View {
+            attr { flexDirectionRow(); alignItemsCenter(); justifyContentSpaceBetween(); marginBottom(14f) }
+            Text {
+                attr {
+                    text(if (ctx.viewModel.settingsSection == TalkUiPolicy.SETTINGS_APPEARANCE) "外观设置" else "AI 与工具")
+                    fontSize(20f); fontWeightSemiBold(); color(ThemeColors.onSurface)
+                }
+            }
+            Button {
+                attr {
+                    width(56f); height(30f); borderRadius(9f); backgroundColor(ThemeColors.surfaceVariant)
+                    titleAttr { text("关闭"); fontSize(12f); color(ThemeColors.onSurface) }
+                }
+                event { click { ctx.viewModel.closeSettings() } }
+            }
+        }
+        if (ctx.viewModel.settingsSection == TalkUiPolicy.SETTINGS_AI) {
+            settingsCard("模型", "腾讯混元 hy3\n首版唯一模型，由 CloudBase 测试环境代理，密钥不进入 APK。")
+            settingsCard("工具", "A 股行情查询（只读）\n行情问题会先调用 MarketDataProvider，再把带来源、时间和新鲜度的数据交给 AI。")
+            settingsCard("回答格式", "服务端输出 Markdown；客户端渲染标题、段落、列表和代码块。默认不显示原始 JSON/XML。")
+            Button {
+                attr {
+                    height(42f); marginTop(4f); borderRadius(12f); backgroundColor(ThemeColors.accent)
+                    titleAttr { text("进入行情中心"); fontSize(14f); color(ThemeColors.onAccent) }
+                }
+                event { click { ctx.viewModel.selectTab(TalkUiPolicy.TAB_MARKET) } }
+            }
+        } else {
+            settingsLabel("主题")
+            View {
+                attr { flexDirectionRow(); marginBottom(16f) }
+                settingChoiceButton("跟随系统", ctx.viewModel.themeMode == "system") { ctx.viewModel.selectTheme("system") }
+                settingChoiceButton("浅色", ctx.viewModel.themeMode == "light") { ctx.viewModel.selectTheme("light") }
+                settingChoiceButton("深色", ctx.viewModel.themeMode == "dark") { ctx.viewModel.selectTheme("dark") }
+            }
+            settingsLabel("气泡样式")
+            View {
+                attr { flexDirectionRow(); marginBottom(16f) }
+                settingChoiceButton("柔和", ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_SOFT) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_SOFT) }
+                settingChoiceButton("描边", ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_OUTLINE) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_OUTLINE) }
+                settingChoiceButton("紧凑", ctx.viewModel.bubbleStyle == TalkUiPolicy.BUBBLE_COMPACT) { ctx.viewModel.selectBubbleStyle(TalkUiPolicy.BUBBLE_COMPACT) }
+            }
+            settingsLabel("头像样式")
+            View {
+                attr { flexDirectionRow(); marginBottom(16f) }
+                settingChoiceButton("文字", ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_TEXT) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_TEXT) }
+                settingChoiceButton("圆形", ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_ROUND) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_ROUND) }
+                settingChoiceButton("极简", ctx.viewModel.avatarStyle == TalkUiPolicy.AVATAR_MINIMAL) { ctx.viewModel.selectAvatarStyle(TalkUiPolicy.AVATAR_MINIMAL) }
+            }
+            Text {
+                attr {
+                    text("选中项会立即高亮；关闭页面后可在对话中看到样式变化。")
+                    fontSize(12f); lineHeight(18f); color(ThemeColors.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingsCard(title: String, body: String) {
+    View {
+        attr { padding(14f); borderRadius(12f); backgroundColor(ThemeColors.surface); marginBottom(10f) }
+        Text { attr { text(title); fontSize(15f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
+        Text { attr { text(body); marginTop(6f); fontSize(13f); lineHeight(20f); color(ThemeColors.onSurfaceVariant) } }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingsLabel(title: String) {
+    Text { attr { text(title); marginBottom(8f); fontSize(14f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingChoiceButton(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Button {
+        attr {
+            flex(1f); height(38f); marginRight(7f); borderRadius(10f)
+            backgroundColor(if (selected) ThemeColors.accent else ThemeColors.surface)
+            titleAttr { text(title); fontSize(12f); color(if (selected) ThemeColors.onAccent else ThemeColors.onSurface) }
+        }
+        event { click { onClick() } }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.toolsPanel(ctx: TalkToAiPager) {
+    View {
+        attr {
+            positionAbsolute(); left(0f); right(0f); top(54f); bottom(0f)
             zIndex(45, false); padding(16f); backgroundColor(ThemeColors.background); flexDirectionColumn()
         }
         View {
@@ -588,11 +745,11 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.toolsPanel(ctx: Tal
     }
 }
 
-private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sessionPanel(ctx: TalkToAiPager, safeTop: Float) {
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sessionPanel(ctx: TalkToAiPager) {
     View {
         attr {
             positionAbsolute()
-            left(0f); right(0f); top(safeTop + 54f); bottom(0f)
+            left(0f); right(0f); top(54f); bottom(0f)
             zIndex(40, false)
             padding(16f)
             backgroundColor(ThemeColors.background)
@@ -702,7 +859,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.actionButton(
                     if (ctx.viewModel.isGenerating) ctx.viewModel.stop() else ctx.viewModel.newSession()
                 }
                 else if (action == "theme") ctx.viewModel.cycleTheme()
-                else if (action == "sidebar") ctx.viewModel.toggleSidebar()
+                else if (action == "sidebar") ctx.viewModel.closeSidebar()
                 else if (action == "sessions") {
                     ctx.viewModel.status = "正在打开会话管理…"
                     ctx.viewModel.toggleSessionPanel()
@@ -740,4 +897,37 @@ private fun drawRectangle(
     canvas.lineTo(left, top + height)
     canvas.closePath()
     canvas.fill()
+}
+
+private fun drawMarketBars(
+    canvas: com.tencent.kuikly.core.views.CanvasContext,
+    width: Float,
+    height: Float,
+    bars: List<MarketBarUi>,
+) {
+    if (bars.isEmpty()) return
+    val priceHeight = height * 0.68f
+    val volumeTop = height * 0.75f
+    val high = bars.maxOf { it.high }
+    val low = bars.minOf { it.low }
+    val range = max(high - low, 0.01f)
+    val maxVolume = max(bars.maxOf { it.volume }, 1f)
+    val step = width / bars.size
+    val candleWidth = max(step * 0.48f, 2f)
+    bars.forEachIndexed { index, bar ->
+        val x = step * index + step / 2f
+        val highY = 5f + (high - bar.high) / range * (priceHeight - 10f)
+        val lowY = 5f + (high - bar.low) / range * (priceHeight - 10f)
+        val openY = 5f + (high - bar.open) / range * (priceHeight - 10f)
+        val closeY = 5f + (high - bar.close) / range * (priceHeight - 10f)
+        val rising = bar.close >= bar.open
+        val color = if (rising) Color(0xFFE5484D) else Color(0xFF16A34A)
+        canvas.strokeStyle(color); canvas.fillStyle(color); canvas.lineWidth(1f)
+        canvas.beginPath(); canvas.moveTo(x, highY); canvas.lineTo(x, lowY); canvas.stroke()
+        val top = minOf(openY, closeY)
+        val bodyHeight = max(kotlin.math.abs(openY - closeY), 1.5f)
+        drawRectangle(canvas, x - candleWidth / 2f, top, candleWidth, bodyHeight)
+        val volumeHeight = (bar.volume / maxVolume) * (height - volumeTop - 4f)
+        drawRectangle(canvas, x - candleWidth / 2f, height - volumeHeight, candleWidth, volumeHeight)
+    }
 }

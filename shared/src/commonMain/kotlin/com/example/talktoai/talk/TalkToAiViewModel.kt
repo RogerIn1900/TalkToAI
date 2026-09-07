@@ -42,6 +42,12 @@ internal class TalkToAiViewModel(
     var bubbleStyle: String by observable(TalkUiPolicy.BUBBLE_SOFT)
     var avatarStyle: String by observable(TalkUiPolicy.AVATAR_TEXT)
     var likedMessageIds: List<String> by observable(emptyList())
+    var selectedMessageId: String by observable("")
+    var showSettingsPanel: Boolean by observable(false)
+    var settingsSection: String by observable(TalkUiPolicy.SETTINGS_AI)
+    var showInlineMarketCard: Boolean by observable(false)
+    var inlineMarketSummary: String by observable("")
+    var inlineMarketBars: List<MarketBarUi> by observable(emptyList())
     private var notificationRef: CallbackRef? = null
     private var networkNotificationRef: CallbackRef? = null
 
@@ -103,6 +109,11 @@ internal class TalkToAiViewModel(
         }
         input = ""
         bridge.callJsonRpc("talk.draft.set", JSONObject().put("text", ""), null)
+        if (TalkUiPolicy.isMarketIntent(text)) {
+            showInlineMarketCard = true
+            inlineMarketSummary = "正在通过只读行情工具获取数据…"
+            inlineMarketBars = emptyList()
+        }
         isGenerating = true
         status = "正在生成…"
         sourceSummary = "来源：等待回答引用…"
@@ -222,6 +233,18 @@ internal class TalkToAiViewModel(
         bridge.toast("已复制本条消息")
     }
 
+    fun copySelectedText(messageId: String, parts: List<String>) {
+        if (messageId != selectedMessageId) return
+        val content = parts.joinToString(separator = "\n").trim()
+        if (content.isEmpty()) {
+            bridge.toast("请先选择文本")
+            return
+        }
+        bridge.copyToPasteboard(content)
+        selectedMessageId = ""
+        bridge.toast("已复制选中文本")
+    }
+
     fun toggleLike(messageId: String) {
         val index = messages.indexOfFirst { it.id == messageId }
         if (index < 0) return
@@ -246,18 +269,28 @@ internal class TalkToAiViewModel(
     fun selectTab(tab: String) {
         activeTab = if (tab == TalkUiPolicy.TAB_MARKET) TalkUiPolicy.TAB_MARKET else TalkUiPolicy.TAB_CHAT
         showSidebar = false
+        showSettingsPanel = false
     }
 
-    fun toggleSidebar() {
-        showSidebar = !showSidebar
+    fun openSidebar() {
+        bridge.callJsonRpc("talk.draft.flush", null, null)
+        selectedMessageId = ""
+        showSessionPanel = false
+        showToolsPanel = false
+        showSettingsPanel = false
+        showSidebar = true
     }
 
-    fun cycleBubbleStyle() {
-        bubbleStyle = TalkUiPolicy.nextBubbleStyle(bubbleStyle)
+    fun closeSidebar() {
+        showSidebar = false
     }
 
-    fun cycleAvatarStyle() {
-        avatarStyle = TalkUiPolicy.nextAvatarStyle(avatarStyle)
+    fun selectBubbleStyle(style: String) {
+        bubbleStyle = TalkUiPolicy.normalizeBubbleStyle(style)
+    }
+
+    fun selectAvatarStyle(style: String) {
+        avatarStyle = TalkUiPolicy.normalizeAvatarStyle(style)
     }
 
     fun modelNotice() {
@@ -278,6 +311,25 @@ internal class TalkToAiViewModel(
         }
         themeMode = next
         bridge.callJsonRpc("talk.theme.set", JSONObject().put("mode", next), null)
+    }
+
+    fun selectTheme(mode: String) {
+        themeMode = TalkUiPolicy.normalizeTheme(mode)
+        bridge.callJsonRpc("talk.theme.set", JSONObject().put("mode", themeMode), null)
+    }
+
+    fun openSettings(section: String) {
+        settingsSection = if (section == TalkUiPolicy.SETTINGS_APPEARANCE) {
+            TalkUiPolicy.SETTINGS_APPEARANCE
+        } else {
+            TalkUiPolicy.SETTINGS_AI
+        }
+        showSidebar = false
+        showSettingsPanel = true
+    }
+
+    fun closeSettings() {
+        showSettingsPanel = false
     }
 
     fun themeLabel(): String = when (themeMode) {
@@ -380,6 +432,10 @@ internal class TalkToAiViewModel(
         isGenerating = false
         activeRequestId = ""
         pendingAttachments = emptyList()
+        selectedMessageId = ""
+        showInlineMarketCard = false
+        inlineMarketSummary = ""
+        inlineMarketBars = emptyList()
     }
 
     fun loadMarket(period: String, customRange: Boolean = false) {
@@ -436,11 +492,15 @@ internal class TalkToAiViewModel(
         val type = event.optString("type")
         event.optJSONObject("session")?.let(::applySession)
         when (type) {
+            "market" -> applyInlineMarket(event.optJSONObject("market"))
             "delta" -> status = "正在生成…"
             "done" -> {
                 isGenerating = false
                 activeRequestId = ""
                 status = "回答完成 · 仅供信息参考，不构成投资建议"
+                if (showInlineMarketCard && inlineMarketBars.isEmpty() && inlineMarketSummary.startsWith("正在")) {
+                    inlineMarketSummary = "行情工具未返回可用数据；以下文本回答不得视为实时行情"
+                }
                 if (sourceSummary == "来源：等待回答引用…") sourceSummary = "来源：模型未提供可核验的 HTTPS 引用"
             }
             "stopped" -> {
@@ -463,6 +523,30 @@ internal class TalkToAiViewModel(
                 }
             }
         }
+    }
+
+    private fun applyInlineMarket(root: JSONObject?) {
+        if (root == null) {
+            inlineMarketSummary = "行情工具返回格式错误，AI 将明确说明数据不可用"
+            inlineMarketBars = emptyList()
+            return
+        }
+        val data = root.optJSONArray("data") ?: JSONArray()
+        inlineMarketBars = buildList {
+            for (index in 0 until data.length()) {
+                data.optJSONObject(index)?.let { bar ->
+                    add(MarketBarUi(
+                        open = bar.optDouble("open").toFloat(),
+                        high = bar.optDouble("high").toFloat(),
+                        low = bar.optDouble("low").toFloat(),
+                        close = bar.optDouble("close").toFloat(),
+                        volume = bar.optDouble("volume").toFloat(),
+                    ))
+                }
+            }
+        }
+        inlineMarketSummary = "${root.optString("symbol")} · ${root.optString("freshness")}\n" +
+            "数据：${root.optString("marketTime")}\n来源：${root.optString("source")}"
     }
 
     private fun applySession(session: JSONObject) {
@@ -664,6 +748,11 @@ internal data class ChatMessageUi(
     val liked: Boolean = false,
 )
 
+internal data class MarkdownBlockUi(
+    val kind: String,
+    val text: String,
+)
+
 internal object TalkUiPolicy {
     const val TAB_CHAT = "chat"
     const val TAB_MARKET = "market"
@@ -673,6 +762,12 @@ internal object TalkUiPolicy {
     const val AVATAR_TEXT = "text"
     const val AVATAR_ROUND = "round"
     const val AVATAR_MINIMAL = "minimal"
+    const val SETTINGS_AI = "ai"
+    const val SETTINGS_APPEARANCE = "appearance"
+    const val MARKDOWN_HEADING = "heading"
+    const val MARKDOWN_BULLET = "bullet"
+    const val MARKDOWN_CODE = "code"
+    const val MARKDOWN_PARAGRAPH = "paragraph"
 
     fun displayContent(content: String, status: String): String = content.ifEmpty {
         when (status) {
@@ -689,6 +784,11 @@ internal object TalkUiPolicy {
         else -> BUBBLE_SOFT
     }
 
+    fun normalizeBubbleStyle(style: String): String = when (style) {
+        BUBBLE_OUTLINE, BUBBLE_COMPACT -> style
+        else -> BUBBLE_SOFT
+    }
+
     fun bubbleStyleLabel(style: String): String = when (style) {
         BUBBLE_OUTLINE -> "描边"
         BUBBLE_COMPACT -> "紧凑"
@@ -700,6 +800,77 @@ internal object TalkUiPolicy {
         AVATAR_ROUND -> AVATAR_MINIMAL
         else -> AVATAR_TEXT
     }
+
+    fun normalizeAvatarStyle(style: String): String = when (style) {
+        AVATAR_ROUND, AVATAR_MINIMAL -> style
+        else -> AVATAR_TEXT
+    }
+
+    fun normalizeTheme(mode: String): String = when (mode) {
+        "light", "dark" -> mode
+        else -> "system"
+    }
+
+    fun isMarketIntent(content: String): Boolean {
+        val normalized = content.replace(" ", "")
+        return Regex("(大盘|行情|走势|指数|K线|成交量|A股)", RegexOption.IGNORE_CASE).containsMatchIn(normalized) ||
+            Regex("(今日数据|今天数据)").containsMatchIn(normalized) ||
+            Regex("(今日|今天).*(市场|盘面|涨跌)").containsMatchIn(normalized) ||
+            Regex("(市场|盘面|涨跌).*(今日|今天)").containsMatchIn(normalized) ||
+            Regex("(todaymarket|markettoday|a-?share|stockindex|kline)", RegexOption.IGNORE_CASE).containsMatchIn(normalized)
+    }
+
+    fun markdownBlocks(content: String): List<MarkdownBlockUi> {
+        if (content.isBlank()) return emptyList()
+        val blocks = mutableListOf<MarkdownBlockUi>()
+        val paragraph = mutableListOf<String>()
+        val code = mutableListOf<String>()
+        var inCode = false
+        fun flushParagraph() {
+            if (paragraph.isNotEmpty()) {
+                blocks += MarkdownBlockUi(MARKDOWN_PARAGRAPH, stripInlineMarkdown(paragraph.joinToString("\n")))
+                paragraph.clear()
+            }
+        }
+        fun flushCode() {
+            if (code.isNotEmpty()) {
+                blocks += MarkdownBlockUi(MARKDOWN_CODE, code.joinToString("\n"))
+                code.clear()
+            }
+        }
+        content.lines().forEach { rawLine ->
+            val line = rawLine.trimEnd()
+            if (line.trimStart().startsWith("```")) {
+                if (inCode) flushCode() else flushParagraph()
+                inCode = !inCode
+            } else if (inCode) {
+                code += line
+            } else if (line.isBlank()) {
+                flushParagraph()
+            } else {
+                val heading = Regex("^#{1,3}\\s+(.+)$").find(line)
+                val bullet = Regex("^(?:[-*]|\\d+[.)])\\s+(.+)$").find(line)
+                when {
+                    heading != null -> {
+                        flushParagraph()
+                        blocks += MarkdownBlockUi(MARKDOWN_HEADING, stripInlineMarkdown(heading.groupValues[1]))
+                    }
+                    bullet != null -> {
+                        flushParagraph()
+                        blocks += MarkdownBlockUi(MARKDOWN_BULLET, "• ${stripInlineMarkdown(bullet.groupValues[1])}")
+                    }
+                    else -> paragraph += line
+                }
+            }
+        }
+        if (inCode) flushCode() else flushParagraph()
+        return blocks
+    }
+
+    private fun stripInlineMarkdown(content: String): String = content
+        .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+        .replace(Regex("__(.+?)__"), "$1")
+        .replace(Regex("`([^`]+)`"), "$1")
 
     fun avatarStyleLabel(style: String): String = when (style) {
         AVATAR_ROUND -> "圆形"

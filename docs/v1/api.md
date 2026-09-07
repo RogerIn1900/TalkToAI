@@ -6,7 +6,9 @@ Base URL 由 Android `BuildConfig` 注入，正式测试环境必须为 HTTPS。
 
 请求：`installationId`、`conversationId`、`messages[]`、`attachments[]`、`stream=true`。附件仅传已上传对象的受控引用与 MIME 元数据，不内联文件正文。
 
-成功：`text/event-stream`，事件类型为 `meta`、`delta`、`citation`、`done`。`citation` 仅由模型正文中实际出现且可解析的 HTTPS URL 生成；没有链接时客户端明确提示没有可核验外部引用。客户端以 `done` 结束；断开连接即取消上游生成。
+成功：`text/event-stream`，事件类型为 `meta`、可选 `market`、`delta`、`citation`、`done`。当最后一条用户消息命中行情意图时，服务端先调用只读 `MarketDataProvider`，并保证 `market` 事件早于首个 `delta`；该事件包含标准化 OHLCV、来源、数据时间、获取时间、新鲜度和原因，客户端据此先展示图表。`citation` 仅由模型正文中实际出现且可解析的 HTTPS URL 生成；没有链接时客户端明确提示没有可核验外部引用。客户端以 `done` 结束；断开连接即取消上游生成。
+
+模型正文协议为 Markdown 文本，不是 JSON 或 XML。服务端提示词要求默认输出简洁 Markdown；Android 端将标题、列表、段落和代码块转换为原生 Kuikly 文本样式，不直接显示 Markdown 标记。只有用户明确要求原始结构化数据时，模型才可返回 JSON/XML 代码块。
 
 错误：JSON `{ "error": { "code", "message", "retryable", "resetAt"? }, "requestId" }`。稳定错误码：`INVALID_ARGUMENT`、`UNAUTHORIZED_INSTALLATION`、`AI_NOT_CONFIGURED`、`DAILY_QUOTA_EXCEEDED`、`UPSTREAM_TIMEOUT`、`UPSTREAM_UNAVAILABLE`、`INTERNAL_ERROR`。
 

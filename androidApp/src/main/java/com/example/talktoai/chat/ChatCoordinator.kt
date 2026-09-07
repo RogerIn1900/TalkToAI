@@ -58,6 +58,7 @@ class ChatCoordinator(
         val now = nowMs()
         val assistantMessage = ChatMessage(requestId, MessageRole.ASSISTANT, "", MessageStatus.STREAMING, now)
         var session = baseSession.copy(updatedAtMs = now, messages = baseSession.messages + assistantMessage)
+        var lastPublishedAtMs = 0L
         store.upsert(session)
         emit(snapshotEvent("session", session, requestId))
         val currentAttachments = baseSession.messages.lastOrNull { it.role == MessageRole.USER }?.attachments.orEmpty()
@@ -71,8 +72,12 @@ class ChatCoordinator(
                         session = updateAssistant(session, requestId) { message ->
                             message.copy(content = message.content + delta, status = MessageStatus.STREAMING)
                         }
-                        store.upsert(session)
-                        emit(snapshotEvent("delta", session, requestId))
+                        val publishAtMs = nowMs()
+                        if (publishAtMs - lastPublishedAtMs >= STREAM_PUBLISH_INTERVAL_MS) {
+                            store.upsert(session, durable = false)
+                            emit(snapshotEvent("delta", session, requestId))
+                            lastPublishedAtMs = publishAtMs
+                        }
                     }
                     "done" -> {
                         session = updateAssistant(session, requestId) { it.copy(status = MessageStatus.COMPLETE) }
@@ -82,6 +87,7 @@ class ChatCoordinator(
                     }
                     "error" -> fail(session, requestId, data.optString("code"), data.optString("message"), data.optBoolean("retryable", true))
                     "meta" -> emit(JSONObject().put("type", "meta").put("requestId", requestId).put("data", data))
+                    "market" -> emit(JSONObject().put("type", "market").put("requestId", requestId).put("market", data))
                     "citation" -> {
                         val url = data.optString("url")
                         if (url.startsWith("https://")) {
@@ -185,5 +191,6 @@ class ChatCoordinator(
 
     companion object {
         private const val DEFAULT_TITLE_CHARS = 20
+        private const val STREAM_PUBLISH_INTERVAL_MS = 50L
     }
 }
