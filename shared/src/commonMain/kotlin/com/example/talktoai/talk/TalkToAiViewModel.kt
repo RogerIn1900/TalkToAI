@@ -665,8 +665,13 @@ internal class TalkToAiViewModel(
                 )
             }
         }
-        messages.clear()
-        messages.addAll(parsedMessages)
+        // Keep unchanged rows and native charts alive while only the streaming
+        // answer changes. Clearing the list rebuilt the entire conversation.
+        while (messages.size > parsedMessages.size) messages.removeAt(messages.lastIndex)
+        parsedMessages.forEachIndexed { index, message ->
+            if (index >= messages.size) messages.add(message)
+            else if (messages[index] != message) messages[index] = message
+        }
         transcript = buildString {
             for (index in 0 until sessionMessages.length()) {
                 val message = sessionMessages.optJSONObject(index) ?: continue

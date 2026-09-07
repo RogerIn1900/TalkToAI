@@ -1,0 +1,217 @@
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:compileKotlin
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+
+> Task :buildSrc:jar
+:jar: No valid plugin descriptors were found in META-INF/gradle-plugins
+
+> Configure project :shared
+[KuiklyGradle][KuiklyPlugin] apply
+[KuiklyGradle][KuiklyPlugin] Using KSP dependency: com.tencent.kuikly-open:core-ksp:2.27.0-2.1.21
+The 'ksp' configuration is deprecated in Kotlin Multiplatform projects. Please use target-specific configurations like 'kspJvm' instead.
+[KuiklyGradle][JSSplitProcessor] Registered dynamic KSP arguments via Provider-based arg (KSP 2.x) with rootProject.ext sharing
+[KuiklyGradle][JSSplitProcessor] Registered dynamic KSP arguments for packEntryJSBundle context
+[KuiklyGradle][JSProcessor] > createPackAssetsTask packJsLocalAssetsDebug with assetsPath: null
+[KuiklyGradle][JSProcessor] > createPackAssetsTask packJsSplitAssetsDebug with assetsPath: null
+[KuiklyGradle][JSProcessor] > createPackAssetsTask packJsLocalAssetsRelease with assetsPath: null
+[KuiklyGradle][JSProcessor] > createPackAssetsTask packJsSplitAssetsRelease with assetsPath: null
+[KuiklyGradle][JSSplitProcessor] Page list cache cleared
+[KuiklyGradle][JSSplitProcessor] Added webpack task dependency: jsBrowserDevelopmentWebpack
+[KuiklyGradle][JSSplitProcessor] Added webpack task dependency: jsBrowserProductionWebpack
+[KuiklyGradle][JSSplitProcessor] Task 'packEntryJSBundleDebug' not in execution graph, context not set
+[KuiklyGradle][JSSplitProcessor] Task 'packEntryJSBundleDebug' is NOT in execution graph, skipping webpack hooks configuration
+[KuiklyGradle][JSSplitProcessor] Task 'packEntryJSBundleRelease' not in execution graph, context not set
+[KuiklyGradle][JSSplitProcessor] Task 'packEntryJSBundleRelease' is NOT in execution graph, skipping webpack hooks configuration
+
+> Task :shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :shared:preBuild UP-TO-DATE
+> Task :shared:preDebugBuild UP-TO-DATE
+> Task :shared:generateDebugResValues
+> Task :shared:generateDebugResources
+> Task :shared:packageDebugResources
+> Task :shared:preDebugUnitTestBuild UP-TO-DATE
+> Task :shared:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :shared:parseDebugLocalResources
+> Task :androidApp:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :androidApp:preBuild UP-TO-DATE
+> Task :androidApp:preDebugBuild UP-TO-DATE
+> Task :shared:javaPreCompileDebug
+> Task :androidApp:generateDebugBuildConfig
+> Task :androidApp:generateDebugResValues
+> Task :shared:generateDebugRFile
+> Task :shared:writeDebugAarMetadata
+> Task :shared:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :androidApp:checkDebugAarMetadata
+> Task :androidApp:mapDebugSourceSetPaths
+> Task :androidApp:generateDebugResources
+> Task :androidApp:packageDebugResources
+> Task :androidApp:createDebugCompatibleScreenManifests
+> Task :androidApp:extractDeepLinksDebug
+> Task :androidApp:parseDebugLocalResources
+> Task :shared:extractDeepLinksDebug
+> Task :shared:compileDebugLibraryResources
+> Task :androidApp:preDebugUnitTestBuild UP-TO-DATE
+> Task :androidApp:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :androidApp:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :androidApp:javaPreCompileDebug
+> Task :shared:processDebugManifest
+> Task :androidApp:mergeDebugShaders
+> Task :androidApp:mergeDebugResources
+> Task :androidApp:processDebugMainManifest
+> Task :androidApp:processDebugManifest
+> Task :androidApp:compileDebugShaders NO-SOURCE
+> Task :androidApp:generateDebugAssets UP-TO-DATE
+> Task :shared:kspDebugKotlinAndroid
+> Task :shared:mergeDebugShaders
+> Task :shared:compileDebugShaders NO-SOURCE
+> Task :shared:debugAssetsCopyForAGP NO-SOURCE
+> Task :shared:generateDebugAssets UP-TO-DATE
+> Task :shared:packageDebugAssets
+> Task :androidApp:mergeDebugAssets
+> Task :androidApp:processDebugManifestForPackage
+> Task :androidApp:compressDebugAssets
+> Task :androidApp:desugarDebugFileDependencies
+> Task :androidApp:mergeDebugJniLibFolders
+> Task :shared:mergeDebugJniLibFolders
+> Task :shared:mergeDebugNativeLibs NO-SOURCE
+> Task :shared:copyDebugJniLibsProjectOnly
+> Task :androidApp:validateSigningDebug
+> Task :androidApp:mergeDebugNativeLibs NO-SOURCE
+> Task :androidApp:stripDebugDebugSymbols NO-SOURCE
+> Task :androidApp:checkDebugDuplicateClasses
+> Task :androidApp:writeDebugAppMetadata
+> Task :androidApp:writeDebugSigningConfigVersions
+> Task :shared:stripDebugDebugSymbols NO-SOURCE
+> Task :shared:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :shared:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :shared:prepareDebugArtProfile UP-TO-DATE
+> Task :shared:prepareLintJarForPublish UP-TO-DATE
+> Task :androidApp:preDebugAndroidTestBuild SKIPPED
+> Task :androidApp:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :shared:writeDebugLintModelMetadata UP-TO-DATE
+> Task :androidApp:extractProguardFiles UP-TO-DATE
+> Task :shared:extractProguardFiles UP-TO-DATE
+> Task :shared:preDebugAndroidTestBuild UP-TO-DATE
+> Task :shared:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :androidApp:processDebugResources
+
+> Task :shared:compileDebugKotlinAndroid
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/RouterPage.kt:261:29 'fun fontWeightSemisolid(): TextAttr' is deprecated. use fontWeightSemiBold() instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/AppShellState.kt:17:28 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/AppShellState.kt:19:32 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/AppShellState.kt:21:36 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/IPagerIdKtx.kt:3:8 'interface IPagerId : PagerScope' is deprecated. Use PagerScope instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/IPagerIdKtx.kt:17:14 'interface IPagerId : PagerScope' is deprecated. Use PagerScope instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/IPagerIdKtx.kt:17:53 'fun <reified T> pagerId(noinline initializer: (String) -> T): ReadOnlyProperty<PagerScope, T>' is deprecated. Use PagerScope instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/IPagerIdKtx.kt:21:14 'interface IPagerId : PagerScope' is deprecated. Use PagerScope instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/Utils.kt:19:52 'var currentPageId: String' is deprecated. 使用Pager上下文的pagerId代替.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/Utils.kt:25:36 'var currentPageId: String' is deprecated. 使用Pager上下文的pagerId代替.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/base/theme/ThemeColors.kt:23:33 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiPager.kt:41:50 'fun <reified T> pagerId(noinline initializer: (String) -> T): ReadOnlyProperty<PagerScope, T>' is deprecated. Use PagerScope instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:17:26 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:18:39 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:19:31 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:20:52 'fun <T> observableList(): ReadWriteProperty<Any, ObservableList<T>>' is deprecated. use PagerScope.observableList(mode) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:21:27 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:22:37 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:23:36 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:24:34 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:25:28 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:26:34 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:27:42 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:28:33 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:29:33 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:30:31 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:31:29 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:32:36 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:33:37 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:34:38 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:35:30 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:36:41 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:37:38 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:38:42 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:39:32 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:40:51 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:41:36 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:42:34 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:43:31 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:44:34 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:45:30 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:46:33 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:47:32 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:48:32 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:49:42 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:50:38 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:51:39 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:52:51 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:53:39 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:54:36 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:55:42 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:56:40 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/shared/src/commonMain/kotlin/com/example/talktoai/talk/TalkToAiViewModel.kt:57:48 'fun <T> observable(init: T): ReadWriteProperty<Any, T>' is deprecated. use PagerScope.observable(mode, value) instead.
+
+> Task :shared:compileDebugJavaWithJavac NO-SOURCE
+> Task :shared:bundleLibRuntimeToJarDebug
+> Task :shared:bundleLibCompileToJarDebug
+> Task :shared:processDebugJavaRes
+> Task :shared:kspDebugUnitTestKotlinAndroid UP-TO-DATE
+> Task :shared:compileDebugUnitTestKotlinAndroid UP-TO-DATE
+> Task :shared:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :shared:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :shared:testDebugUnitTest
+> Task :androidApp:mergeExtDexDebug
+> Task :shared:extractDebugAnnotations UP-TO-DATE
+> Task :shared:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :shared:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :shared:mergeDebugJavaResource UP-TO-DATE
+> Task :shared:syncDebugLibJars
+> Task :androidApp:mergeLibDexDebug
+> Task :shared:bundleDebugLocalLintAar
+> Task :shared:createFullJarDebug
+> Task :shared:generateDebugLintModel
+> Task :shared:generateDebugAndroidTestLintModel
+> Task :shared:generateDebugUnitTestLintModel
+> Task :shared:lintAnalyzeDebugUnitTest
+> Task :shared:lintAnalyzeDebugAndroidTest
+> Task :shared:lintAnalyzeDebug
+
+> Task :androidApp:compileDebugKotlin
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/androidApp/src/main/java/com/example/talktoai/KuiklyRenderActivity.kt:67:60 'static field SOFT_INPUT_ADJUST_RESIZE: Int' is deprecated. Deprecated in Java.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/androidApp/src/main/java/com/example/talktoai/KuiklyRenderActivity.kt:142:23 'var systemUiVisibility: Int' is deprecated. Deprecated in Java.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/androidApp/src/main/java/com/example/talktoai/KuiklyRenderActivity.kt:142:69 'static field SYSTEM_UI_FLAG_LIGHT_STATUS_BAR: Int' is deprecated. Deprecated in Java.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/androidApp/src/main/java/com/example/talktoai/adapter/KRImageAdapter.kt:24:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/androidApp/src/main/java/com/example/talktoai/adapter/KRImageAdapter.kt:63:28 Unchecked cast of 'RequestBuilder<GifDrawable!>' to 'RequestBuilder<Drawable>'.
+
+> Task :androidApp:l8DexDesugarLibDebug
+> Task :androidApp:compileDebugJavaWithJavac
+> Task :androidApp:processDebugJavaRes
+> Task :androidApp:bundleDebugClassesToCompileJar
+> Task :androidApp:bundleDebugClassesToRuntimeJar
+> Task :androidApp:compileDebugUnitTestKotlin
+> Task :androidApp:mergeDebugJavaResource
+> Task :androidApp:dexBuilderDebug
+> Task :androidApp:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :androidApp:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :androidApp:testDebugUnitTest
+> Task :androidApp:generateDebugAndroidTestLintModel
+> Task :androidApp:mergeProjectDexDebug
+> Task :androidApp:generateDebugLintReportModel
+> Task :androidApp:generateDebugUnitTestLintModel
+> Task :androidApp:packageDebug
+> Task :androidApp:createDebugApkListingFileRedirect
+> Task :androidApp:assembleDebug
+> Task :androidApp:lintAnalyzeDebugAndroidTest
+> Task :androidApp:lintAnalyzeDebugUnitTest
+> Task :androidApp:lintAnalyzeDebug
+
+> Task :androidApp:lintReportDebug
+Wrote HTML report to file:///Users/jerry/JustDoIt/OHHHHH/TalkToAI/androidApp/build/reports/lint-results-debug.html
+
+> Task :androidApp:lintDebug
+
+BUILD SUCCESSFUL in 23s
+100 actionable tasks: 79 executed, 21 up-to-date

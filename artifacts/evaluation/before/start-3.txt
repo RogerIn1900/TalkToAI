@@ -1,0 +1,7 @@
+Starting: Intent { cmp=com.example.talktoai/.KuiklyRenderActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.example.talktoai/.KuiklyRenderActivity
+TotalTime: 3216
+WaitTime: 3244
+Complete

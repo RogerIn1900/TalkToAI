@@ -73,6 +73,8 @@ class TalkToAiApi(
                 }
 
                 override fun onResponse(call: Call, response: Response) {
+                    var terminalReceived = false
+                    try {
                     response.use {
                         if (!response.isSuccessful) {
                             val error = runCatching { JSONObject(response.body?.string().orEmpty()).getJSONObject("error") }.getOrNull()
@@ -89,9 +91,28 @@ class TalkToAiApi(
                             return
                         }
                         while (!source.exhausted() && !call.isCanceled()) {
-                            parser.accept(source.readUtf8Line().orEmpty())?.let(listener::onEvent)
+                            parser.accept(source.readUtf8Line().orEmpty())?.let { event ->
+                                terminalReceived = event.type == "done" || event.type == "error"
+                                listener.onEvent(event)
+                            }
+                            if (terminalReceived) break
                         }
-                        parser.finish()?.let(listener::onEvent)
+                        if (!terminalReceived && !call.isCanceled()) {
+                            parser.finish()?.let { event ->
+                                terminalReceived = event.type == "done" || event.type == "error"
+                                listener.onEvent(event)
+                            }
+                        }
+                        if (!terminalReceived && !call.isCanceled()) {
+                            listener.onFailure("STREAM_INTERRUPTED", "连接已中断，请重新加载", true)
+                        }
+                    }
+                    } catch (error: IOException) {
+                        // OkHttp does not call onFailure again for exceptions while reading
+                        // an onResponse body. Always close the stream and terminate UI state.
+                        if (!terminalReceived && !call.isCanceled()) {
+                            listener.onFailure("NETWORK_ERROR", "网络连接中断，请重新加载", true)
+                        }
                     }
                 }
             })

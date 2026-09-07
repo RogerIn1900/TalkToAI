@@ -2,6 +2,9 @@ package com.example.talktoai.market
 
 import android.content.Context
 import org.json.JSONObject
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 /** Exact-query disk cache. Cached payloads preserve the server freshness fields. */
 class MarketBarsCache(
@@ -14,8 +17,19 @@ class MarketBarsCache(
         val raw = preferences.getString(key(symbol, period, from, to), null) ?: return null
         val record = runCatching { JSONObject(raw) }.getOrNull() ?: return null
         val storedAtMs = record.optLong(FIELD_STORED_AT_MS, -1L)
-        if (!MarketCachePolicy.isReusable(period, from != null && to != null, storedAtMs, nowMs())) return null
-        return runCatching { JSONObject(record.getString(FIELD_PAYLOAD)).put(FIELD_CACHE_HIT, true) }.getOrNull()
+        val now = nowMs()
+        val historical = MarketCachePolicy.isHistoricalRange(from, to, now)
+        if (!MarketCachePolicy.isReusable(period, historical, storedAtMs, now)) return null
+        return runCatching {
+            JSONObject(record.getString(FIELD_PAYLOAD)).apply {
+                put(FIELD_CACHE_HIT, true)
+                // A cached server verdict is not a new real-time validation.
+                if (optString("freshness") == "FRESH") {
+                    put("freshness", "UNKNOWN")
+                    put("freshnessReason", "本地缓存，实时新鲜度尚未重新验证")
+                }
+            }
+        }.getOrNull()
     }
 
     fun put(symbol: String, period: String, from: String?, to: String?, payload: JSONObject) {
@@ -38,9 +52,17 @@ class MarketBarsCache(
 }
 
 internal object MarketCachePolicy {
+    private val MARKET_ZONE = ZoneId.of("Asia/Shanghai")
     private const val INTRADAY_MAX_AGE_MS = 60_000L
     private const val CURRENT_PERIOD_MAX_AGE_MS = 15L * 60_000L
     private const val HISTORICAL_RANGE_MAX_AGE_MS = 7L * 24L * 60L * 60_000L
+
+    fun isHistoricalRange(from: String?, to: String?, nowMs: Long): Boolean = runCatching {
+        if (from.isNullOrBlank() || to.isNullOrBlank()) return false
+        val start = LocalDate.parse(from)
+        val end = LocalDate.parse(to)
+        !start.isAfter(end) && end.isBefore(Instant.ofEpochMilli(nowMs).atZone(MARKET_ZONE).toLocalDate())
+    }.getOrDefault(false)
 
     fun isReusable(period: String, customRange: Boolean, storedAtMs: Long, nowMs: Long): Boolean {
         if (storedAtMs < 0L || nowMs < storedAtMs) return false

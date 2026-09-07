@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.talktoai.chat.SessionStoreCodecTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-07T14:10:43" hostname="JerrydeMac-mini.local" time="0.019">
+  <properties/>
+  <testcase name="session codec preserves attachment references and message status" classname="com.example.talktoai.chat.SessionStoreCodecTest" time="0.018"/>
+  <testcase name="interrupted streaming response recovers as stopped" classname="com.example.talktoai.chat.SessionStoreCodecTest" time="0.001"/>
+  <testcase name="invalid persisted JSON recovers as empty session list" classname="com.example.talktoai.chat.SessionStoreCodecTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

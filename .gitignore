@@ -15,6 +15,7 @@ local.properties
 /artifacts/*.apk
 /artifacts/debug-archive/
 /artifacts/runtime/
+/artifacts/evaluation/**/events.txt
 *.so
 *.js
 !backend/functions/talktoai-api/dist/**/*.js

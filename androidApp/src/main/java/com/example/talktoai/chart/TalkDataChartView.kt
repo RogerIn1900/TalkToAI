@@ -26,27 +26,47 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
     private var chartType = TYPE_LINE
     private var chartData = ""
     private var darkMode = false
+    private var renderedConfiguration: Triple<String, String, Boolean>? = null
+    private val renderTask = Runnable { renderChart() }
+
+    private fun scheduleRender() {
+        // Kuikly delivers data, type and theme separately in the same UI batch.
+        removeCallbacks(renderTask)
+        post(renderTask)
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(renderTask)
+        super.onDetachedFromWindow()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        scheduleRender()
+    }
 
     override fun setProp(propKey: String, propValue: Any): Boolean = when (propKey) {
         PROP_CHART_TYPE -> {
             chartType = propValue.toString().takeIf(ALLOWED_TYPES::contains) ?: TYPE_LINE
-            renderChart()
+            scheduleRender()
             true
         }
         PROP_CHART_DATA -> {
             chartData = propValue.toString()
-            renderChart()
+            scheduleRender()
             true
         }
         PROP_DARK_MODE -> {
             darkMode = propValue as? Boolean ?: false
-            renderChart()
+            scheduleRender()
             true
         }
         else -> super.setProp(propKey, propValue)
     }
 
     private fun renderChart() {
+        val configuration = Triple(chartType, chartData, darkMode)
+        if (configuration == renderedConfiguration) return
         if (chartData.isBlank()) return
         val model = runCatching { ChartPayload.parse(JSONObject(chartData)) }.getOrNull() ?: return
         removeAllViews()
@@ -56,6 +76,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
             else -> createLineChart(model)
         }
         addView(chart, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        renderedConfiguration = configuration
     }
 
     private fun createLineChart(model: ChartPayload): LineChart = LineChart(context).apply {
@@ -107,9 +128,9 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
     }
 
     private fun configureCartesian(chart: com.github.mikephil.charting.charts.BarLineChartBase<*>, model: ChartPayload) {
-        chart.description.isEnabled = true
-        chart.description.text = "横轴：${model.xLabel}  纵轴：${model.yLabel}"
-        chart.description.textColor = foregroundColor()
+        // Axis meanings are already shown below the chart by Kuikly. An in-plot
+        // description overlaps the date ticks on narrow screens.
+        chart.description.isEnabled = false
         chart.axisRight.isEnabled = false
         chart.axisLeft.textColor = foregroundColor()
         chart.axisLeft.gridColor = gridColor()

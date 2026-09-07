@@ -1,0 +1,29 @@
+
+> talktoai-api@1.0.0 test
+> node --import tsx --test test/*.test.ts
+
+✔ health does not expose credentials (43.942917ms)
+✔ market intent streams chart data before AI and injects freshness context (19.084083ms)
+✔ market rejects unsupported symbol (2.36825ms)
+✔ attachment upload validates metadata and returns a controlled object reference (1.839708ms)
+✔ chat streams meta deltas and done (2.072292ms)
+✔ chat enforces daily quota (3.637459ms)
+✔ unconfigured AI fails before consuming quota (1.565ms)
+✔ fixture never labels historical data as real-time fresh (3.885791ms)
+✔ weekly fixture aggregates OHLCV into one bar (0.153917ms)
+✔ intraday is fresh within 60 seconds during trading (2.652875ms)
+✔ intraday is stale after five minutes during trading (0.224542ms)
+✔ unknown is returned when calendar is unavailable (0.078083ms)
+✔ quota permits requests up to limit and then rejects (32.978167ms)
+✔ quota resets at Asia Shanghai natural day (0.248208ms)
+✔ quota document id hashes installation id (0.165ms)
+✔ SQL quota maps atomic database result (1.1605ms)
+✔ SQL quota rejects malformed database result (0.462084ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 305.232333

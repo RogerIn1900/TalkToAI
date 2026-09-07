@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.talktoai.talk.TalkUiPolicyTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-09-07T14:10:37" hostname="JerrydeMac-mini.local" time="0.098">
+  <properties/>
+  <testcase name="marketDatesValidateCalendarDaysAndAxisLabels" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.036"/>
+  <testcase name="inputStatePreservesValidSelectionAndCompositionAndClampsStaleOffsets" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.003"/>
+  <testcase name="appearanceValuesAreNormalized" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.0"/>
+  <testcase name="displayContentUsesExplicitStateFallbacks" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.001"/>
+  <testcase name="marketIntentRecognizesTodayAndChartQuestionsWithoutMatchingUnrelatedText" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.004"/>
+  <testcase name="regenerateOnlyAcceptsLatestAssistantMessage" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.025"/>
+  <testcase name="markdownBlocksRenderHeadingsListsParagraphsAndCodeWithoutMarkers" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.011"/>
+  <testcase name="malformedOrNonnumericMarkdownTablesDoNotBecomeCharts" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.009"/>
+  <testcase name="bubbleAndAvatarStylesCycleDeterministically" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.0"/>
+  <testcase name="markdownTableIsRemovedFromTextAndConvertedToReusableChartData" classname="com.example.talktoai.talk.TalkUiPolicyTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

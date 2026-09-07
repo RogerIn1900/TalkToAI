@@ -12,6 +12,8 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.io.File
+import okhttp3.mockwebserver.SocketPolicy
+import java.util.concurrent.atomic.AtomicReference
 
 class TalkToAiApiTest {
     private lateinit var server: MockWebServer
@@ -25,6 +27,41 @@ class TalkToAiApiTest {
     @After
     fun tearDown() {
         server.shutdown()
+    }
+
+    @Test
+    fun `stream EOF without terminal event reports retryable failure`() {
+        assertStreamFailure(
+            MockResponse().setBody("event: delta\ndata: {\"text\":\"partial\"}\n\n"),
+            "STREAM_INTERRUPTED",
+        )
+    }
+
+    @Test
+    fun `stream disconnected during response reports network failure`() {
+        assertStreamFailure(
+            MockResponse().setBody("event: delta\ndata: " + "x".repeat(4096))
+                .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY),
+            "NETWORK_ERROR",
+        )
+    }
+
+    private fun assertStreamFailure(response: MockResponse, expectedCode: String) {
+        server.enqueue(response)
+        val completed = CountDownLatch(1)
+        val failure = AtomicReference<Pair<String, Boolean>>()
+        TalkToAiApi(baseUrl = server.url("/").toString()).streamChat(
+            "installation-test", "conversation-test", emptyList(),
+            listener = object : TalkToAiApi.StreamListener {
+                override fun onEvent(event: StreamEvent) = Unit
+                override fun onFailure(code: String, message: String, retryable: Boolean) {
+                    failure.set(code to retryable)
+                    completed.countDown()
+                }
+            },
+        )
+        assertTrue("Expected terminal failure", completed.await(3, TimeUnit.SECONDS))
+        assertEquals(expectedCode to true, failure.get())
     }
 
     @Test

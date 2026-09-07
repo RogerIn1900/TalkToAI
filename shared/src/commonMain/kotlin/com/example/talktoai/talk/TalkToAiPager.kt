@@ -432,7 +432,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                             "message-like",
                             message.id,
                         )
-                        if (TalkUiPolicy.canRegenerate(ctx.viewModel.messages, message.id)) {
+                        vif({ TalkUiPolicy.canRegenerate(ctx.viewModel.messages, message.id) }) {
                             messageActionButton(
                                 ctx,
                                 if (message.status == "failed") "重新加载" else "重新生成",

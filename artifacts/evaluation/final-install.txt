@@ -1,0 +1,12 @@
+Final APK: 6946389 bytes
+SHA256: a67dc0cc0f4b5128ba1bba0db93001825cb3d4237b6bbd5f5473a633434814c8
+Command: adb -s emulator-5554 install --no-streaming -r -t androidApp/build/outputs/apk/debug/androidApp-debug.apk
+Result: Success
+Command: adb -s emulator-5554 shell am force-stop com.example.talktoai
+Command: adb -s emulator-5554 shell am start -W -n com.example.talktoai/.KuiklyRenderActivity
+Status: ok
+LaunchState: COLD
+TotalTime: 11292
+WaitTime: 11295
+Complete
+This is a transcription of the tool output, not part of the five-sample comparison.

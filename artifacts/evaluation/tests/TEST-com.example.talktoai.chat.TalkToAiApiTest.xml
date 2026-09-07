@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.talktoai.chat.TalkToAiApiTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-07T14:10:43" hostname="JerrydeMac-mini.local" time="0.135">
+  <properties/>
+  <testcase name="stream disconnected during response reports network failure" classname="com.example.talktoai.chat.TalkToAiApiTest" time="0.12"/>
+  <testcase name="attachment upload sends bytes and identity without embedding file in JSON" classname="com.example.talktoai.chat.TalkToAiApiTest" time="0.006"/>
+  <testcase name="failed and blank messages are not sendable" classname="com.example.talktoai.chat.TalkToAiApiTest" time="0.001"/>
+  <testcase name="stream EOF without terminal event reports retryable failure" classname="com.example.talktoai.chat.TalkToAiApiTest" time="0.004"/>
+  <testcase name="stream request omits empty pending assistant message" classname="com.example.talktoai.chat.TalkToAiApiTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
