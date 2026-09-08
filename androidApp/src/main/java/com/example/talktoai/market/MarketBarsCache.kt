@@ -33,10 +33,18 @@ class MarketBarsCache(
     }
 
     fun put(symbol: String, period: String, from: String?, to: String?, payload: JSONObject) {
+        val cacheKey = key(symbol, period, from, to)
+        val storedAtMs = nowMs()
         val record = JSONObject()
-            .put(FIELD_STORED_AT_MS, nowMs())
+            .put(FIELD_STORED_AT_MS, storedAtMs)
             .put(FIELD_PAYLOAD, payload.toString())
-        preferences.edit().putString(key(symbol, period, from, to), record.toString()).apply()
+        val timestamps = preferences.all.mapNotNull { (entryKey, value) ->
+            val timestamp = (value as? String)?.let { runCatching { JSONObject(it).optLong(FIELD_STORED_AT_MS, -1L) }.getOrNull() }
+            timestamp?.takeIf { it >= 0L }?.let { entryKey to it }
+        }.toMap().toMutableMap().apply { put(cacheKey, storedAtMs) }
+        val editor = preferences.edit().putString(cacheKey, record.toString())
+        MarketCachePolicy.keysToEvict(timestamps, MAX_CACHE_ENTRIES).forEach(editor::remove)
+        editor.apply()
     }
 
     private fun key(symbol: String, period: String, from: String?, to: String?): String =
@@ -48,6 +56,7 @@ class MarketBarsCache(
         private const val FIELD_PAYLOAD = "payload"
         const val FIELD_CACHE_HIT = "clientCacheHit"
         private const val KEY_SEPARATOR = "|"
+        private const val MAX_CACHE_ENTRIES = 120
     }
 }
 
@@ -72,5 +81,13 @@ internal object MarketCachePolicy {
             else -> CURRENT_PERIOD_MAX_AGE_MS
         }
         return nowMs - storedAtMs <= maxAgeMs
+    }
+
+    fun keysToEvict(timestamps: Map<String, Long>, maxEntries: Int): List<String> {
+        require(maxEntries > 0) { "maxEntries must be positive" }
+        return timestamps.entries
+            .sortedWith(compareBy<Map.Entry<String, Long>> { it.value }.thenBy { it.key })
+            .take((timestamps.size - maxEntries).coerceAtLeast(0))
+            .map { it.key }
     }
 }

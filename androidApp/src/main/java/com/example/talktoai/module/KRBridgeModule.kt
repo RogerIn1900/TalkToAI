@@ -25,11 +25,15 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.Executors
 import com.example.talktoai.diagnostics.DiagnosticLogStore
 import com.example.talktoai.market.MarketBarsCache
 
 class KRBridgeModule : KuiklyRenderBaseModule() {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val storageExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "talktoai-storage").apply { isDaemon = true }
+    }
     private val api = TalkToAiApi()
     private var coordinator: ChatCoordinator? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -46,7 +50,14 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         "toast" -> toast(params)
         "copyToPasteboard" -> copyToPasteboard(params)
         "showAlert" -> showAlert(params, callback)
-        "talk.sessions.load" -> callbackJson(callback, chatCoordinator().sessionsJson())
+        "talk.sessions.load" -> runStorage(callback) { chatCoordinator().sessionsJson() }
+        "talk.sessions.search" -> runStorage(callback) {
+            chatCoordinator().sessionsJson(JSONObject(params ?: "{}").optString("query"))
+        }
+        "talk.sessions.open" -> runStorage(callback) {
+            val json = JSONObject(params ?: "{}")
+            chatCoordinator().openSessionJson(json.requireString("sessionId"), json.optInt("limit", 100))
+        }
         "talk.sessions.rename" -> mutateSession(params, callback) { c, p -> c.rename(p.requireString("sessionId"), p.requireString("title")) }
         "talk.sessions.archive" -> mutateSession(params, callback) { c, p -> c.archive(p.requireString("sessionId"), p.optBoolean("archived", true)) }
         "talk.sessions.delete" -> mutateSession(params, callback) { c, p -> c.delete(p.requireString("sessionId")) }
@@ -74,6 +85,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         mainHandler.removeCallbacks(draftWriteRunnable)
         flushDraft()
         coordinator?.cancelAll()
+        storageExecutor.shutdown()
         networkCallback?.let { callback ->
             (context?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
                 ?.runCatching { unregisterNetworkCallback(callback) }
@@ -99,7 +111,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     }
 
     private fun startChat(params: String?, callback: KuiklyRenderCallback?) {
-        runCatching {
+        storageExecutor.execute { runCatching {
             val json = JSONObject(params ?: "{}")
             val attachmentsJson = json.optJSONArray("attachments")
             val attachments = buildList {
@@ -120,8 +132,10 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             val requestId = chatCoordinator().start(
                 json.optString("sessionId").takeIf(String::isNotBlank), json.requireString("text"), attachments,
             )
-            callback?.invoke(mapOf("ok" to true, "requestId" to requestId))
-        }.onFailure { callback?.invoke(mapOf("ok" to false, "error" to "INVALID_ARGUMENT", "message" to (it.message ?: "参数错误"))) }
+            mainHandler.post { callback?.invoke(mapOf("ok" to true, "requestId" to requestId)) }
+        }.onFailure { error ->
+            mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to "INVALID_ARGUMENT", "message" to (error.message ?: "参数错误"))) }
+        } }
     }
 
     private fun pickAttachment(callback: KuiklyRenderCallback?) {
@@ -187,15 +201,18 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     private fun stopChat(params: String?, callback: KuiklyRenderCallback?) {
         val requestId = JSONObject(params ?: "{}").optString("requestId")
-        chatCoordinator().stop(requestId)
-        callback?.invoke(mapOf("ok" to true))
+        storageExecutor.execute {
+            chatCoordinator().stop(requestId)
+            mainHandler.post { callback?.invoke(mapOf("ok" to true)) }
+        }
     }
 
     private fun retryChat(params: String?, callback: KuiklyRenderCallback?) {
-        runCatching {
+        storageExecutor.execute { runCatching {
             chatCoordinator().retry(JSONObject(params ?: "{}").requireString("sessionId"))
-        }.onSuccess { requestId -> callback?.invoke(mapOf("ok" to true, "requestId" to requestId)) }
-            .onFailure { callback?.invoke(mapOf("ok" to false, "error" to "RETRY_UNAVAILABLE", "message" to "没有可重试的用户消息")) }
+        }.onSuccess { requestId -> mainHandler.post { callback?.invoke(mapOf("ok" to true, "requestId" to requestId)) } }
+            .onFailure { mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to "RETRY_UNAVAILABLE", "message" to "没有可重试的用户消息")) } }
+        }
     }
 
     private fun mutateSession(
@@ -203,9 +220,13 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         callback: KuiklyRenderCallback?,
         action: (ChatCoordinator, JSONObject) -> Unit,
     ) {
-        runCatching { action(chatCoordinator(), JSONObject(params ?: "{}")) }
-            .onSuccess { callbackJson(callback, chatCoordinator().sessionsJson()) }
-            .onFailure { callback?.invoke(mapOf("ok" to false, "error" to "INVALID_ARGUMENT")) }
+        storageExecutor.execute { runCatching { action(chatCoordinator(), JSONObject(params ?: "{}")) }
+            .onSuccess {
+                val sessions = chatCoordinator().sessionsJson()
+                mainHandler.post { callbackJson(callback, sessions) }
+            }
+            .onFailure { mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to "INVALID_ARGUMENT")) } }
+        }
     }
 
     private fun marketBars(params: String?, callback: KuiklyRenderCallback?) {
@@ -289,6 +310,14 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     private fun callbackJson(callback: KuiklyRenderCallback?, json: JSONObject) {
         callback?.invoke(mapOf("ok" to true, "json" to json.toString()))
+    }
+
+    private fun runStorage(callback: KuiklyRenderCallback?, block: () -> JSONObject) {
+        storageExecutor.execute {
+            runCatching(block)
+                .onSuccess { json -> mainHandler.post { callbackJson(callback, json) } }
+                .onFailure { mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to "STORAGE_FAILED")) } }
+        }
     }
 
     private fun isOnline(): Boolean {
@@ -420,7 +449,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     }
 
     private fun exportSession(params: String?, callback: KuiklyRenderCallback?) {
-        runCatching {
+        storageExecutor.execute { runCatching {
             val sessionId = JSONObject(params ?: "{}").requireString("sessionId")
             val ctx = requireNotNull(context)
             val exportsDir = File(ctx.cacheDir, "exports").apply { mkdirs() }
@@ -432,11 +461,13 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            ctx.startActivity(Intent.createChooser(share, "导出会话"))
-            callback?.invoke(mapOf("ok" to true))
+            mainHandler.post {
+                ctx.startActivity(Intent.createChooser(share, "导出会话"))
+                callback?.invoke(mapOf("ok" to true))
+            }
         }.onFailure {
-            callback?.invoke(mapOf("ok" to false, "error" to "EXPORT_FAILED", "message" to "会话导出失败"))
-        }
+            mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to "EXPORT_FAILED", "message" to "会话导出失败")) }
+        } }
     }
 
     private fun JSONObject.requireString(key: String): String = getString(key).trim().also {

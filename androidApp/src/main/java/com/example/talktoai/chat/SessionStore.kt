@@ -1,76 +1,181 @@
 package com.example.talktoai.chat
 
 import android.content.Context
+import com.example.talktoai.chat.db.ChatDatabase
+import com.example.talktoai.chat.db.ChatMessageEntity
+import com.example.talktoai.chat.db.ChatSessionEntity
 import org.json.JSONArray
 import org.json.JSONObject
 
 class SessionStore(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val database = ChatDatabase.get(context)
+    private val dao = database.chatDao()
     private val lock = Any()
 
     fun loadVisible(): List<ChatSession> = synchronized(lock) {
-        purgeExpiredLocked(System.currentTimeMillis())
-        val decoded = decode(preferences.getString(KEY_SESSIONS, null))
-        val recovered = recoverInterrupted(decoded)
-        if (recovered != decoded) persist(recovered)
-        recovered.filter { it.deletedAtMs == null }
+        migrateLegacyLocked()
+        dao.deleteExpiredSessions(System.currentTimeMillis() - DELETION_RETENTION_MS)
+        dao.markInterruptedMessagesStopped()
+        dao.visibleSessions().map(::hydrate)
+    }
+
+    fun loadVisibleSummaries(): List<ChatSession> = synchronized(lock) {
+        migrateLegacyLocked()
+        dao.deleteExpiredSessions(System.currentTimeMillis() - DELETION_RETENTION_MS)
+        dao.markInterruptedMessagesStopped()
+        dao.visibleSessions().map { entity ->
+            ChatSession(entity.id, entity.title, entity.archived, entity.deletedAtMs, entity.updatedAtMs, emptyList())
+        }
+    }
+
+    fun searchVisibleSummaries(query: String): List<ChatSession> = synchronized(lock) {
+        migrateLegacyLocked()
+        dao.searchVisibleSessions(query.trim()).map { entity ->
+            ChatSession(entity.id, entity.title, entity.archived, entity.deletedAtMs, entity.updatedAtMs, emptyList())
+        }
+    }
+
+    fun getRecent(sessionId: String, limit: Int): SessionSlice? = synchronized(lock) {
+        migrateLegacyLocked()
+        dao.markInterruptedMessagesStopped()
+        val entity = dao.visibleSession(sessionId) ?: return@synchronized null
+        val safeLimit = limit.coerceIn(1, MAX_PAGE_MESSAGES)
+        val messages = dao.recentMessages(sessionId, safeLimit).asReversed().map { it.toModel() }
+        SessionSlice(
+            session = ChatSession(entity.id, entity.title, entity.archived, entity.deletedAtMs, entity.updatedAtMs, messages),
+            totalMessages = dao.messageCount(sessionId),
+        )
     }
 
     fun get(sessionId: String): ChatSession? = synchronized(lock) {
-        decode(preferences.getString(KEY_SESSIONS, null)).firstOrNull { it.id == sessionId && it.deletedAtMs == null }
+        migrateLegacyLocked()
+        dao.markInterruptedMessagesStopped()
+        dao.visibleSession(sessionId)?.let(::hydrate)
     }
 
     fun upsert(session: ChatSession, durable: Boolean = true) = synchronized(lock) {
-        val sessions = decode(preferences.getString(KEY_SESSIONS, null)).toMutableList()
-        val index = sessions.indexOfFirst { it.id == session.id }
-        if (index >= 0) sessions[index] = session else sessions.add(session)
-        persist(sessions, durable)
+        migrateLegacyLocked()
+        upsertLocked(session, incremental = !durable)
     }
 
-    fun softDelete(sessionId: String, nowMs: Long) = updateSession(sessionId) { it.copy(deletedAtMs = nowMs, updatedAtMs = nowMs) }
+    fun softDelete(sessionId: String, nowMs: Long) = synchronized(lock) {
+        migrateLegacyLocked()
+        dao.softDelete(sessionId, nowMs)
+    }
 
-    fun rename(sessionId: String, title: String, nowMs: Long) = updateSession(sessionId) {
+    fun rename(sessionId: String, title: String, nowMs: Long) = synchronized(lock) {
         val normalized = title.trim()
         require(normalized.isNotEmpty()) { "title-invalid" }
-        it.copy(title = normalized.take(MAX_TITLE_CHARS), updatedAtMs = nowMs)
+        migrateLegacyLocked()
+        dao.rename(sessionId, normalized.take(MAX_TITLE_CHARS), nowMs)
     }
 
-    fun archive(sessionId: String, archived: Boolean, nowMs: Long) = updateSession(sessionId) {
-        it.copy(archived = archived, updatedAtMs = nowMs)
+    fun archive(sessionId: String, archived: Boolean, nowMs: Long) = synchronized(lock) {
+        migrateLegacyLocked()
+        dao.archive(sessionId, archived, nowMs)
     }
 
-    private fun updateSession(sessionId: String, transform: (ChatSession) -> ChatSession) = synchronized(lock) {
-        val sessions = decode(preferences.getString(KEY_SESSIONS, null)).toMutableList()
-        val index = sessions.indexOfFirst { it.id == sessionId }
-        if (index >= 0) {
-            sessions[index] = transform(sessions[index])
-            persist(sessions)
+    private fun migrateLegacyLocked() {
+        if (preferences.getBoolean(KEY_ROOM_MIGRATED, false)) return
+        val legacy = recoverInterrupted(decode(preferences.getString(KEY_SESSIONS, null)))
+        legacy.forEach { upsertLocked(it, incremental = false) }
+        // Preserve the old JSON as a rollback source. Only the marker changes.
+        check(preferences.edit().putBoolean(KEY_ROOM_MIGRATED, true).commit()) { "Failed to mark Room migration" }
+    }
+
+    private fun upsertLocked(session: ChatSession, incremental: Boolean) {
+        database.runInTransaction {
+            dao.upsertSession(session.toEntity())
+            if (incremental) {
+                // A streaming delta can only modify the tail assistant message. Avoid reading and
+                // comparing the complete conversation up to 20 times per second.
+                session.messages.lastOrNull()?.let { message ->
+                    dao.upsertMessages(listOf(message.toEntity(session.id, session.messages.lastIndex)))
+                }
+                return@runInTransaction
+            }
+            val desired = session.messages.mapIndexed { position, message -> message.toEntity(session.id, position) }
+            val existing = dao.messages(session.id).associateBy { it.id }
+            val changed = desired.filter { existing[it.id] != it }
+            if (changed.isNotEmpty()) dao.upsertMessages(changed)
+            val removed = existing.keys - desired.mapTo(mutableSetOf()) { it.id }
+            if (removed.isNotEmpty()) dao.deleteMessages(removed.toList())
         }
     }
 
-    private fun purgeExpiredLocked(nowMs: Long) {
-        val sessions = decode(preferences.getString(KEY_SESSIONS, null))
-        val retained = sessions.filter { session ->
-            session.deletedAtMs?.let { nowMs - it < DELETION_RETENTION_MS } ?: true
+    private fun hydrate(entity: ChatSessionEntity): ChatSession = ChatSession(
+        id = entity.id,
+        title = entity.title,
+        archived = entity.archived,
+        deletedAtMs = entity.deletedAtMs,
+        updatedAtMs = entity.updatedAtMs,
+        messages = dao.messages(entity.id).map { it.toModel() },
+    )
+
+    private fun ChatSession.toEntity() = ChatSessionEntity(id, title, archived, deletedAtMs, updatedAtMs)
+
+    private fun ChatMessage.toEntity(sessionId: String, position: Int) = ChatMessageEntity(
+        id = id,
+        sessionId = sessionId,
+        position = position,
+        role = role.wireName,
+        content = content,
+        status = status.wireName,
+        createdAtMs = createdAtMs,
+        attachmentsJson = encodeAttachments(attachments).toString(),
+        citationsJson = JSONArray(citations).toString(),
+    )
+
+    private fun ChatMessageEntity.toModel() = ChatMessage(
+        id = id,
+        role = MessageRole.entries.first { it.wireName == role },
+        content = content,
+        status = MessageStatus.entries.first { it.wireName == status },
+        createdAtMs = createdAtMs,
+        attachments = decodeAttachments(attachmentsJson),
+        citations = decodeCitations(citationsJson),
+    )
+
+    private fun encodeAttachments(attachments: List<ChatAttachment>) = JSONArray().apply {
+        attachments.forEach { attachment ->
+            put(JSONObject().apply {
+                put("id", attachment.id)
+                put("name", attachment.name)
+                put("mimeType", attachment.mimeType)
+                put("sizeBytes", attachment.sizeBytes)
+                put("localPath", attachment.localPath)
+                put("objectRef", attachment.objectRef)
+            })
         }
-        if (retained.size != sessions.size) persist(retained)
     }
 
-    private fun persist(sessions: List<ChatSession>, durable: Boolean = true) {
-        val editor = preferences.edit().putString(KEY_SESSIONS, encode(sessions).toString())
-        if (durable) {
-            check(editor.commit()) { "Failed to persist chat sessions" }
-        } else {
-            // Streaming updates are frequent; apply() updates the in-memory value immediately and lets
-            // SharedPreferences coalesce disk writes. The terminal event always performs a durable commit.
-            editor.apply()
+    private fun decodeAttachments(raw: String): List<ChatAttachment> = runCatching {
+        val array = JSONArray(raw)
+        List(array.length()) { index ->
+            val item = array.getJSONObject(index)
+            ChatAttachment(
+                id = item.getString("id"),
+                name = item.getString("name"),
+                mimeType = item.getString("mimeType"),
+                sizeBytes = item.getLong("sizeBytes"),
+                localPath = item.optString("localPath"),
+                objectRef = item.optString("objectRef"),
+            )
         }
-    }
+    }.getOrDefault(emptyList())
+
+    private fun decodeCitations(raw: String): List<String> = runCatching {
+        val array = JSONArray(raw)
+        List(array.length()) { array.optString(it) }.filter { it.startsWith("https://") }
+    }.getOrDefault(emptyList())
 
     companion object {
         private const val PREFERENCES_NAME = "talktoai_sessions_v1"
         private const val KEY_SESSIONS = "sessions"
+        private const val KEY_ROOM_MIGRATED = "room_migrated_v1"
         private const val MAX_TITLE_CHARS = 48
+        private const val MAX_PAGE_MESSAGES = 1_000
         private const val DELETION_RETENTION_MS = 7L * 24 * 60 * 60 * 1000
 
         internal fun encode(sessions: List<ChatSession>): JSONArray = JSONArray().apply {
@@ -171,3 +276,5 @@ class SessionStore(context: Context) {
         }
     }
 }
+
+data class SessionSlice(val session: ChatSession, val totalMessages: Int)

@@ -17,6 +17,7 @@ class ChatCoordinator(
 ) {
     private val installationId = identity.get()
     private val activeCalls = ConcurrentHashMap<String, Call>()
+    private val activeSessionIds = ConcurrentHashMap<String, String>()
 
     fun start(sessionId: String?, text: String, attachments: List<ChatAttachment> = emptyList()): String {
         val trimmed = text.trim()
@@ -62,6 +63,7 @@ class ChatCoordinator(
         store.upsert(session)
         emit(snapshotEvent("session", session, requestId))
         val currentAttachments = baseSession.messages.lastOrNull { it.role == MessageRole.USER }?.attachments.orEmpty()
+        activeSessionIds[requestId] = session.id
 
         val call = api.streamChat(installationId, session.id, session.messages, currentAttachments, object : TalkToAiApi.StreamListener {
             override fun onEvent(event: StreamEvent) {
@@ -83,6 +85,7 @@ class ChatCoordinator(
                         session = updateAssistant(session, requestId) { it.copy(status = MessageStatus.COMPLETE) }
                         store.upsert(session)
                         activeCalls.remove(requestId)
+                        activeSessionIds.remove(requestId)
                         emit(snapshotEvent("done", session, requestId).put("quota", data.optJSONObject("quota")))
                     }
                     "error" -> fail(session, requestId, data.optString("code"), data.optString("message"), data.optBoolean("retryable", true))
@@ -111,15 +114,33 @@ class ChatCoordinator(
 
     fun stop(requestId: String) {
         activeCalls.remove(requestId)?.cancel()
-        val session = store.loadVisible().firstOrNull { candidate -> candidate.messages.any { it.id == requestId } } ?: return
+        val sessionId = activeSessionIds.remove(requestId) ?: return
+        val session = store.get(sessionId) ?: return
         val stopped = updateAssistant(session, requestId) { it.copy(status = MessageStatus.STOPPED) }
         store.upsert(stopped)
         emit(snapshotEvent("stopped", stopped, requestId))
     }
 
-    fun sessionsJson(): JSONObject = JSONObject().put("sessions", JSONArray().apply {
-        store.loadVisible().sortedByDescending { it.updatedAtMs }.forEach { put(sessionJson(it)) }
-    })
+    fun sessionsJson(query: String = ""): JSONObject {
+        val summaries = (if (query.isBlank()) store.loadVisibleSummaries() else store.searchVisibleSummaries(query))
+            .sortedByDescending { it.updatedAtMs }
+        val initialId = summaries.firstOrNull { !it.archived }?.id ?: summaries.firstOrNull()?.id
+        return JSONObject().put("sessions", JSONArray().apply {
+            summaries.forEach { summary ->
+                if (query.isBlank() && summary.id == initialId) {
+                    val slice = store.getRecent(summary.id, DEFAULT_MESSAGE_PAGE_SIZE)
+                    put(sessionJson(slice?.session ?: summary, slice?.totalMessages ?: 0))
+                } else {
+                    put(sessionJson(summary, totalMessages = 0))
+                }
+            }
+        })
+    }
+
+    fun openSessionJson(sessionId: String, limit: Int = DEFAULT_MESSAGE_PAGE_SIZE): JSONObject {
+        val slice = store.getRecent(sessionId, limit) ?: throw IllegalArgumentException("session-not-found")
+        return JSONObject().put("session", sessionJson(slice.session, slice.totalMessages))
+    }
 
     fun rename(sessionId: String, title: String) = store.rename(sessionId, title, nowMs())
     fun archive(sessionId: String, archived: Boolean) = store.archive(sessionId, archived, nowMs())
@@ -141,10 +162,14 @@ class ChatCoordinator(
             }
         }
     }
-    fun cancelAll() = activeCalls.values.forEach(Call::cancel).also { activeCalls.clear() }
+    fun cancelAll() = activeCalls.values.forEach(Call::cancel).also {
+        activeCalls.clear()
+        activeSessionIds.clear()
+    }
 
     private fun fail(session: ChatSession, requestId: String, code: String, message: String, retryable: Boolean) {
         activeCalls.remove(requestId)
+        activeSessionIds.remove(requestId)
         val failed = updateAssistant(session, requestId) { it.copy(status = MessageStatus.FAILED) }
         store.upsert(failed)
         emit(snapshotEvent("error", failed, requestId)
@@ -159,11 +184,12 @@ class ChatCoordinator(
         .put("requestId", requestId)
         .put("session", sessionJson(session))
 
-    private fun sessionJson(session: ChatSession): JSONObject = JSONObject().apply {
+    private fun sessionJson(session: ChatSession, totalMessages: Int = session.messages.size): JSONObject = JSONObject().apply {
         put("id", session.id)
         put("title", session.title)
         put("archived", session.archived)
         put("updatedAtMs", session.updatedAtMs)
+        put("totalMessages", totalMessages)
         put("messages", JSONArray().apply {
             session.messages.forEach { message ->
                 put(JSONObject().apply {
@@ -192,5 +218,6 @@ class ChatCoordinator(
     companion object {
         private const val DEFAULT_TITLE_CHARS = 20
         private const val STREAM_PUBLISH_INTERVAL_MS = 50L
+        private const val DEFAULT_MESSAGE_PAGE_SIZE = 100
     }
 }

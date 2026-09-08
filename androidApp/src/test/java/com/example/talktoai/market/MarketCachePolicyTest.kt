@@ -2,6 +2,7 @@ package com.example.talktoai.market
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MarketCachePolicyTest {
@@ -32,5 +33,12 @@ class MarketCachePolicyTest {
     fun futureAndMissingTimestampsAreRejected() {
         assertFalse(MarketCachePolicy.isReusable("day", false, -1L, 1_000L))
         assertFalse(MarketCachePolicy.isReusable("day", false, 2_000L, 1_000L))
+    }
+
+    @Test
+    fun cacheCapacityEvictsOldestEntriesDeterministically() {
+        val timestamps = mapOf("new" to 30L, "old-b" to 10L, "old-a" to 10L, "middle" to 20L)
+        assertEquals(listOf("old-a", "old-b"), MarketCachePolicy.keysToEvict(timestamps, maxEntries = 2))
+        assertTrue(MarketCachePolicy.keysToEvict(timestamps, maxEntries = 4).isEmpty())
     }
 }
