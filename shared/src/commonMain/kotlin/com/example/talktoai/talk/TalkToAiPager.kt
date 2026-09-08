@@ -16,7 +16,9 @@ import com.tencent.kuikly.core.directives.vfor
 import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.CalendarModule
 import com.tencent.kuikly.core.module.ICalendar
-import com.tencent.kuikly.core.views.Canvas
+import com.tencent.kuiklybase.KuiklyMarkdown
+import com.tencent.kuiklybase.config.MarkdownColors
+import com.tencent.kuiklybase.config.MarkdownConfig
 import com.tencent.kuikly.core.views.DatePicker
 import com.tencent.kuikly.core.views.DivView
 import com.tencent.kuikly.core.views.Input
@@ -26,13 +28,13 @@ import com.tencent.kuikly.core.views.ScrollerView
 import com.tencent.kuikly.core.views.SelectableOption
 import com.tencent.kuikly.core.views.SelectionType
 import com.tencent.kuikly.core.views.Text
-import com.tencent.kuikly.core.views.TextAlign
 import com.tencent.kuikly.core.views.TextInputState
 import com.tencent.kuikly.core.views.View
 import com.tencent.kuikly.core.views.compose.Button
 import com.tencent.kuikly.core.timer.setTimeout
 import com.tencent.kuikly.core.timer.clearTimeout
-import kotlin.math.max
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 @Page("talk_to_ai", supportInLocal = true)
 internal class TalkToAiPager : BasePager() {
@@ -277,7 +279,17 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
         vif({ ctx.viewModel.showInlineMarketCard }) {
             inlineMarketCard(ctx)
         }
-        vfor({ ctx.viewModel.messages }) { message ->
+        vif({ ctx.viewModel.hasEarlierMessages() }) {
+            Button {
+                attr {
+                    height(36f); margin(left = 42f, right = 42f, bottom = 10f); borderRadius(12f)
+                    backgroundColor(ThemeColors.surface)
+                    titleAttr { text("加载更早的消息"); fontSize(13f); color(ThemeColors.accent) }
+                }
+                event { click { ctx.viewModel.loadEarlierMessages() } }
+            }
+        }
+        vfor({ ctx.viewModel.renderedMessages }) { message ->
             messageRow(ctx, message, pageWidth)
         }
         View {
@@ -357,22 +369,32 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                         }
                     }
                 }
-                markdownBlocks.forEachIndexed { index, block ->
-                    Text {
-                        attr {
-                            if (isUser) maxWidth(pageWidth * 0.72f - 24f) else width(pageWidth * 0.72f - 24f)
-                            text(block.text)
-                            fontSize(if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) 17f else if (block.kind == TalkUiPolicy.MARKDOWN_CODE) 13f else 15f)
-                            lineHeight(if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) 24f else 22f)
-                            if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) fontWeightSemiBold()
-                            if (index > 0) marginTop(6f)
-                            color(
-                                if (isUser && ctx.viewModel.bubbleStyle != TalkUiPolicy.BUBBLE_OUTLINE) {
-                                    ThemeColors.onAccent
-                                } else {
-                                    ThemeColors.onSurface
-                                },
-                            )
+                if (!isUser && message.status != "streaming" && message.content.isNotBlank()) {
+                    // The maintained Kuikly renderer handles GFM tables, nested lists, links and code
+                    // without exposing transport Markdown syntax to the user. Streaming keeps the
+                    // lightweight fallback to avoid reparsing the complete answer for every delta.
+                    KuiklyMarkdown(
+                        content = TalkUiPolicy.contentWithoutChartTables(message.content),
+                        config = talkMarkdownConfig(),
+                    )
+                } else {
+                    markdownBlocks.forEachIndexed { index, block ->
+                        Text {
+                            attr {
+                                if (isUser) maxWidth(pageWidth * 0.72f - 24f) else width(pageWidth * 0.72f - 24f)
+                                text(block.text)
+                                fontSize(if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) 17f else if (block.kind == TalkUiPolicy.MARKDOWN_CODE) 13f else 15f)
+                                lineHeight(if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) 24f else 22f)
+                                if (block.kind == TalkUiPolicy.MARKDOWN_HEADING) fontWeightSemiBold()
+                                if (index > 0) marginTop(6f)
+                                color(
+                                    if (isUser && ctx.viewModel.bubbleStyle != TalkUiPolicy.BUBBLE_OUTLINE) {
+                                        ThemeColors.onAccent
+                                    } else {
+                                        ThemeColors.onSurface
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -426,12 +448,14 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                     }
                     messageActionButton(ctx, "复制", "message-copy", message.id)
                     if (!isUser) {
-                        messageActionButton(
-                            ctx,
-                            if (message.liked) "已赞" else "点赞",
-                            "message-like",
-                            message.id,
-                        )
+                        vif({ message.status == "complete" }) {
+                            messageActionButton(
+                                ctx,
+                                if (message.liked) "已赞" else "点赞",
+                                "message-like",
+                                message.id,
+                            )
+                        }
                         vif({ TalkUiPolicy.canRegenerate(ctx.viewModel.messages, message.id) }) {
                             messageActionButton(
                                 ctx,
@@ -447,6 +471,38 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
         }
         if (isUser) messageAvatar(ctx, ai = false)
     }
+}
+
+private fun talkMarkdownConfig(): MarkdownConfig {
+    val colors = if (ThemeColors.isNightMode) {
+        MarkdownColors(
+            text = 0xFFE2E8F0,
+            codeBackground = 0xFF0F172A,
+            inlineCodeBackground = 0xFF1E293B,
+            dividerColor = 0xFF475569,
+            tableBackground = 0xFF1E293B,
+            blockQuoteBar = 0xFF60A5FA,
+            blockQuoteBackground = 0xFF172033,
+            linkColor = 0xFF60A5FA,
+            codeText = 0xFFF1F5F9,
+        )
+    } else {
+        MarkdownColors(
+            text = 0xFF1E293B,
+            codeBackground = 0xFFF1F5F9,
+            inlineCodeBackground = 0xFFE2E8F0,
+            dividerColor = 0xFFCBD5E1,
+            tableBackground = 0xFFF8FAFC,
+            blockQuoteBar = 0xFF3B82F6,
+            blockQuoteBackground = 0xFFEFF6FF,
+            linkColor = 0xFF2563EB,
+            codeText = 0xFF1E293B,
+        )
+    }
+    return MarkdownConfig(
+        colors = colors,
+        codeHighlightDarkTheme = ThemeColors.isNightMode,
+    )
 }
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageChartCard(
@@ -470,7 +526,9 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageChartCard(
             attr { height(32f); marginTop(5f); flexDirectionRow() }
             chartTypeButton(ctx, chartKey, "折线", TalkUiPolicy.CHART_LINE)
             chartTypeButton(ctx, chartKey, "柱状", TalkUiPolicy.CHART_BAR)
-            chartTypeButton(ctx, chartKey, "饼状", TalkUiPolicy.CHART_PIE)
+            vif({ TalkUiPolicy.canUsePie(chart) }) {
+                chartTypeButton(ctx, chartKey, "饼状", TalkUiPolicy.CHART_PIE)
+            }
         }
         DataChart {
             attr {
@@ -579,10 +637,14 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.inlineMarketCard(ct
             }
         }
         chartLegend()
-        Canvas({
-            attr { height(150f); marginTop(8f); borderRadius(9f); backgroundColor(ThemeColors.background) }
-        }) { canvas, width, height ->
-            drawMarketBars(canvas, width, height, ctx.viewModel.inlineMarketBars)
+        vif({ ctx.viewModel.inlineMarketBars.isNotEmpty() }) {
+            MarketChart {
+                attr {
+                    height(170f); marginTop(8f); borderRadius(9f); backgroundColor(ThemeColors.background)
+                    barsJson(ctx.viewModel.inlineMarketBars.toChartJson())
+                    darkMode(ThemeColors.isNightMode)
+                }
+            }
         }
         Text {
             attr {
@@ -652,10 +714,12 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
         }
         chartLegend()
         vif({ ctx.viewModel.marketBars.isNotEmpty() }) {
-            Canvas({
-                attr { flex(1f); marginTop(8f); backgroundColor(ThemeColors.background); borderRadius(10f) }
-            }) { canvas, width, height ->
-                drawMarketBars(canvas, width, height, ctx.viewModel.marketBars)
+            MarketChart {
+                attr {
+                    flex(1f); marginTop(8f); backgroundColor(ThemeColors.background); borderRadius(10f)
+                    barsJson(ctx.viewModel.marketBars.toChartJson())
+                    darkMode(ThemeColors.isNightMode)
+                }
             }
         }
         vif({ ctx.viewModel.marketBars.isEmpty() }) {
@@ -1006,6 +1070,16 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.sessionPanel(ctx: T
             actionButton(ctx, "已归档", "sessions-archived", width = 72f)
             actionButton(ctx, "新会话", "sessions-new", width = 72f)
         }
+        Input {
+            attr {
+                height(40f); marginBottom(10f)
+                borderRadius(10f); backgroundColor(ThemeColors.surface)
+                fontSize(14f); color(ThemeColors.onSurface)
+                placeholder("搜索会话名称或内容")
+                text(ctx.viewModel.sessionQuery)
+            }
+            event { textDidChange { ctx.viewModel.searchSessions(it.text) } }
+        }
         if (ctx.viewModel.currentSessionId.isNotEmpty()) {
             View {
                 attr {
@@ -1123,85 +1197,15 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.actionButton(
     }
 }
 
-private fun drawRectangle(
-    canvas: com.tencent.kuikly.core.views.CanvasContext,
-    left: Float,
-    top: Float,
-    width: Float,
-    height: Float,
-) {
-    canvas.beginPath()
-    canvas.moveTo(left, top)
-    canvas.lineTo(left + width, top)
-    canvas.lineTo(left + width, top + height)
-    canvas.lineTo(left, top + height)
-    canvas.closePath()
-    canvas.fill()
-}
-
-private fun drawMarketBars(
-    canvas: com.tencent.kuikly.core.views.CanvasContext,
-    width: Float,
-    height: Float,
-    bars: List<MarketBarUi>,
-) {
-    if (bars.isEmpty()) return
-    canvas.batchDraw = true
-    val left = 43f
-    val right = width - 8f
-    val priceTop = 10f
-    val priceBottom = height * 0.61f
-    val volumeTop = height * 0.72f
-    val volumeBottom = height - 22f
-    val plotWidth = max(right - left, 1f)
-    val high = bars.maxOf { it.high }
-    val low = bars.minOf { it.low }
-    val range = max(high - low, 0.01f)
-    val maxVolume = max(bars.maxOf { it.volume }, 1f)
-    val gridColor = Color(0x3364748B)
-    val labelColor = Color(0xFF64748B)
-    canvas.font(9f); canvas.fillStyle(labelColor); canvas.strokeStyle(gridColor); canvas.lineWidth(0.7f)
-    for (index in 0..2) {
-        val ratio = index / 2f
-        val y = priceTop + ratio * (priceBottom - priceTop)
-        canvas.beginPath(); canvas.moveTo(left, y); canvas.lineTo(right, y); canvas.stroke()
-        canvas.textAlign(TextAlign.RIGHT)
-        canvas.fillText(chartPriceLabel(high - ratio * range), left - 4f, y + 3f)
-    }
-    canvas.beginPath(); canvas.moveTo(left, volumeTop); canvas.lineTo(right, volumeTop); canvas.stroke()
-    canvas.textAlign(TextAlign.RIGHT); canvas.fillText("量", left - 4f, volumeTop + 3f)
-
-    val step = plotWidth / bars.size
-    val candleWidth = max(step * 0.48f, 2f)
-    bars.forEachIndexed { index, bar ->
-        val x = left + step * index + step / 2f
-        val highY = priceTop + (high - bar.high) / range * (priceBottom - priceTop)
-        val lowY = priceTop + (high - bar.low) / range * (priceBottom - priceTop)
-        val openY = priceTop + (high - bar.open) / range * (priceBottom - priceTop)
-        val closeY = priceTop + (high - bar.close) / range * (priceBottom - priceTop)
-        val rising = bar.close >= bar.open
-        val color = if (rising) Color(0xFFE5484D) else Color(0xFF16A34A)
-        canvas.strokeStyle(color); canvas.fillStyle(color); canvas.lineWidth(1f)
-        canvas.beginPath(); canvas.moveTo(x, highY); canvas.lineTo(x, lowY); canvas.stroke()
-        val top = minOf(openY, closeY)
-        val bodyHeight = max(kotlin.math.abs(openY - closeY), 1.5f)
-        drawRectangle(canvas, x - candleWidth / 2f, top, candleWidth, bodyHeight)
-        val volumeHeight = (bar.volume / maxVolume) * (volumeBottom - volumeTop)
-        canvas.fillStyle(Color(0xFF64748B))
-        drawRectangle(canvas, x - candleWidth / 2f, volumeBottom - volumeHeight, candleWidth, volumeHeight)
-    }
-    val labelIndices = listOf(0, bars.lastIndex / 2, bars.lastIndex).distinct()
-    val preferTimeLabels = bars.size > 1 && bars.map { it.time.take(10) }.distinct().size == 1
-    canvas.font(9f); canvas.fillStyle(labelColor)
-    labelIndices.forEachIndexed { position, index ->
-        canvas.textAlign(when (position) {
-            0 -> TextAlign.LEFT
-            labelIndices.lastIndex -> TextAlign.RIGHT
-            else -> TextAlign.CENTER
+private fun List<MarketBarUi>.toChartJson(): String = JSONArray().apply {
+    this@toChartJson.forEach { bar ->
+        put(JSONObject().apply {
+            put("time", bar.time)
+            put("open", bar.open)
+            put("high", bar.high)
+            put("low", bar.low)
+            put("close", bar.close)
+            put("volume", bar.volume)
         })
-        canvas.fillText(TalkUiPolicy.axisTimeLabel(bars[index].time, preferTimeLabels), left + step * index + step / 2f, height - 5f)
     }
-}
-
-private fun chartPriceLabel(value: Float): String =
-    ((value * 100f).toInt() / 100f).toString()
+}.toString()

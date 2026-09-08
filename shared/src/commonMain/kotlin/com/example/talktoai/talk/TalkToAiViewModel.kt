@@ -18,6 +18,7 @@ internal class TalkToAiViewModel(
     var inputState: TextInputState by observable(TextInputState(""))
     var transcript: String by observable("你好，我是 TalkToAI。可以询问 A 股行情与基础概念。")
     var messages: ObservableList<ChatMessageUi> by observableList()
+    var renderedMessages: ObservableList<ChatMessageUi> by observableList()
     var status: String by observable("正在恢复会话…")
     var currentSessionId: String by observable("")
     var activeRequestId: String by observable("")
@@ -36,6 +37,7 @@ internal class TalkToAiViewModel(
     var sessions: List<SessionRowUi> by observable(emptyList())
     var showSessionPanel: Boolean by observable(false)
     var showArchivedSessions: Boolean by observable(false)
+    var sessionQuery: String by observable("")
     var renameDraft: String by observable("")
     var pendingAttachments: List<AttachmentUi> by observable(emptyList())
     var showToolsPanel: Boolean by observable(false)
@@ -55,6 +57,8 @@ internal class TalkToAiViewModel(
     var showInlineMarketCard: Boolean by observable(false)
     var inlineMarketSummary: String by observable("")
     var inlineMarketBars: List<MarketBarUi> by observable(emptyList())
+    var messageWindowSize: Int by observable(DEFAULT_MESSAGE_WINDOW)
+    var totalMessageCount: Int by observable(0)
     private var scrollRequestVersion: Int = 1
     private var consumedScrollRequestVersion: Int = 0
     private var notificationRef: CallbackRef? = null
@@ -409,17 +413,27 @@ internal class TalkToAiViewModel(
     fun visibleSessions(): List<SessionRowUi> = sessions.filter { it.archived == showArchivedSessions }
 
     fun openSession(sessionId: String) {
-        bridge.callJsonRpc("talk.sessions.load", null) { response ->
-            val array = parseWrappedJson(response)?.optJSONArray("sessions") ?: return@callJsonRpc
-            updateSessionRows(array)
-            for (index in 0 until array.length()) {
-                val candidate = array.optJSONObject(index) ?: continue
-                if (candidate.optString("id") == sessionId) {
-                    applySession(candidate)
-                    renameDraft = candidate.optString("title")
-                    showSessionPanel = false
-                    return@callJsonRpc
-                }
+        openSession(sessionId, DEFAULT_MESSAGE_WINDOW, closePanel = true)
+    }
+
+    private fun openSession(sessionId: String, limit: Int, closePanel: Boolean) {
+        bridge.callJsonRpc(
+            "talk.sessions.open",
+            JSONObject().put("sessionId", sessionId).put("limit", limit),
+        ) { response ->
+            val session = parseWrappedJson(response)?.optJSONObject("session") ?: return@callJsonRpc
+            applySession(session)
+            renameDraft = session.optString("title")
+            if (closePanel) showSessionPanel = false
+        }
+    }
+
+    fun searchSessions(query: String) {
+        sessionQuery = query
+        val normalized = query.trim()
+        bridge.callJsonRpc("talk.sessions.search", JSONObject().put("query", normalized)) { response ->
+            if (sessionQuery.trim() == normalized) {
+                parseWrappedJson(response)?.optJSONArray("sessions")?.let(::updateSessionRows)
             }
         }
     }
@@ -480,6 +494,9 @@ internal class TalkToAiViewModel(
         renameDraft = ""
         transcript = "新会话已建立。"
         messages.clear()
+        renderedMessages.clear()
+        messageWindowSize = DEFAULT_MESSAGE_WINDOW
+        totalMessageCount = 0
         status = "就绪"
         isGenerating = false
         activeRequestId = ""
@@ -488,6 +505,15 @@ internal class TalkToAiViewModel(
         showInlineMarketCard = false
         inlineMarketSummary = ""
         inlineMarketBars = emptyList()
+    }
+
+    fun hasEarlierMessages(): Boolean = totalMessageCount > messages.size
+
+    fun loadEarlierMessages() {
+        if (currentSessionId.isEmpty()) return
+        val nextLimit = (messages.size + MESSAGE_WINDOW_STEP).coerceAtMost(totalMessageCount)
+        messageWindowSize = nextLimit
+        openSession(currentSessionId, nextLimit, closePanel = false)
     }
 
     fun loadMarket(period: String, customRange: Boolean = false) {
@@ -635,7 +661,10 @@ internal class TalkToAiViewModel(
 
     private fun applySession(session: JSONObject) {
         requestScrollToLatest()
-        currentSessionId = session.optString("id")
+        val incomingSessionId = session.optString("id")
+        if (incomingSessionId != currentSessionId) messageWindowSize = DEFAULT_MESSAGE_WINDOW
+        currentSessionId = incomingSessionId
+        totalMessageCount = session.optInt("totalMessages", session.optJSONArray("messages")?.length() ?: 0)
         renameDraft = session.optString("title")
         val sessionMessages = session.optJSONArray("messages") ?: JSONArray()
         val parsedMessages = buildList {
@@ -672,6 +701,7 @@ internal class TalkToAiViewModel(
             if (index >= messages.size) messages.add(message)
             else if (messages[index] != message) messages[index] = message
         }
+        syncRenderedMessages()
         transcript = buildString {
             for (index in 0 until sessionMessages.length()) {
                 val message = sessionMessages.optJSONObject(index) ?: continue
@@ -789,6 +819,15 @@ internal class TalkToAiViewModel(
         return null
     }
 
+    private fun syncRenderedMessages() {
+        val desired = messages.takeLast(messageWindowSize)
+        while (renderedMessages.size > desired.size) renderedMessages.removeAt(renderedMessages.lastIndex)
+        desired.forEachIndexed { index, message ->
+            if (index >= renderedMessages.size) renderedMessages.add(message)
+            else if (renderedMessages[index] != message) renderedMessages[index] = message
+        }
+    }
+
     private fun attachmentError(code: String): String = when (code) {
         "ATTACHMENT_TYPE_UNSUPPORTED" -> "仅支持图片、CSV 和 TXT"
         "ATTACHMENT_TOO_LARGE", "ATTACHMENT_SIZE_INVALID" -> "图片最大 10MB，CSV/TXT 最大 2MB"
@@ -800,6 +839,8 @@ internal class TalkToAiViewModel(
         private const val CHAT_EVENT = "talk.chat.event"
         private const val NETWORK_EVENT = "talk.network.event"
         private const val MAX_ATTACHMENTS = 5
+        private const val DEFAULT_MESSAGE_WINDOW = 100
+        private const val MESSAGE_WINDOW_STEP = 100
         private const val SELECTION_TOOLBAR_GAP = 6f
         const val DATE_TARGET_FROM = "from"
         const val DATE_TARGET_TO = "to"
@@ -1051,10 +1092,30 @@ internal object TalkUiPolicy {
         }
     }
 
+    fun contentWithoutChartTables(content: String): String {
+        val lines = content.lines()
+        val chartTableLines = markdownTableRanges(lines).filter { range ->
+            val header = tableCells(lines[range.first])
+            val rows = (range.first + 2..range.last).map { tableCells(lines[it]) }.filter { it.size == header.size }
+            if (header.size < 2 || rows.size < 2) return@filter false
+            val numericColumns = header.indices.filter { column -> rows.all { parseChartNumber(it[column]) != null } }
+            val labelColumn = header.indices.firstOrNull { it !in numericColumns } ?: 0
+            numericColumns.any { it != labelColumn }
+        }.flatMap { it.toList() }.toSet()
+        return lines.filterIndexed { index, _ -> index !in chartTableLines }
+            .joinToString("\n")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+    }
+
     fun normalizeChartType(type: String?): String = when (type) {
         CHART_BAR, CHART_PIE -> type
         else -> CHART_LINE
     }
+
+    fun canUsePie(chart: ChartDataUi): Boolean = chart.series.size == 1 &&
+        chart.series.single().values.all { it >= 0f } &&
+        chart.series.single().values.any { it > 0f }
 
     private fun markdownTableRanges(lines: List<String>): List<IntRange> {
         val ranges = mutableListOf<IntRange>()

@@ -10,7 +10,7 @@ flowchart LR
     BRIDGE --> CHAT[ChatCoordinator]
     BRIDGE --> API[HTTPS Client]
     CHAT --> SESSION[SessionStore]
-    SESSION --> LOCAL[(App private storage)]
+    SESSION --> ROOM[(Room sessions/messages)]
     API --> GATEWAY[CloudBase Gateway]
     GATEWAY --> PROVIDER[MarketDataProvider]
     GATEWAY --> AI[CloudBase AI]
@@ -24,11 +24,12 @@ Kuikly View 不直接访问网络或持久层。ViewModel 只发出动作和维�
 ## Android UI 状态模型
 
 - 主内容由“对话 / 行情”两个互斥 Tab 承载；侧边栏只负责导航和偏好入口，不承载行情或对话正文。
-- 会话消息解析为结构化 `ChatMessageUi`，存放在 Kuikly `ObservableList` 中，并通过 `vfor` 响应新增、流式更新和恢复；兼容性文本 `transcript` 不再作为气泡列表的数据源。
+- 会话元数据与消息保存在 Room。列表只加载摘要，打开会话默认倒序查询最近 100 条，再按 100 条加载更早记录；会话名称和正文可在本机 SQL 搜索。旧 SharedPreferences JSON 只迁移一次并保留回滚副本。
+- 当前窗口解析为结构化 `ChatMessageUi` 并通过 `ObservableList + vfor` 更新；流式时保留未变化节点，完成态正文交给 KuiklyMarkdown，行情及数值图交给 Android 原生 MPAndroidChart 扩展 View。
 - 用户与 AI 消息分别右、左对齐。复制、点赞和重新生成以消息 ID 定位；V1 只允许重新生成最新一条 AI 回答，避免从历史中间节点隐式分叉。
 - 气泡与头像样式是本地 UI 偏好，不改变持久化消息内容和服务端协议。
 - Android Activity 使用 `adjustResize`，并避免会阻断 IME 窗口缩放的全屏布局标志，保证输入框随软键盘上移。
-- V1 行情图仍为 K 线与同步成交量；饼图、条形图、折线图组成的可配置看板属于后续迭代。
+- V1 行情图由 MPAndroidChart 的 K 线和成交量上下窗渲染，两窗共享 40 根数据与日期轴且禁止独立拖动，避免视窗错位。AI 数值内容默认折线，可切换柱状；饼图只对单序列、非负且非全零数据开放。
 
 ## 后端职责
 

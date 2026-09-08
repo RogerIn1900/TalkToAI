@@ -1,5 +1,7 @@
 # TalkToAI Android V1 验证报告
 
+> 本文件主体是 2026-09-07 的历史记录。第二轮优化后的当前证据见 `test-report-2026-09-08.md`，两者不得混作同一次测试。
+
 日期：2026-09-07；环境：macOS、本机 CloudBase CLI 3.8.1、Android Studio AVD API 36.1、vivo V2507A（Android 15 / API 35）。
 
 ## 已执行验证

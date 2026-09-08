@@ -70,6 +70,9 @@ class TalkUiPolicyTest {
 
         val blocks = TalkUiPolicy.markdownBlocks(content)
         assertFalse(blocks.any { it.text.contains("|") || it.text.contains("---") })
+        val richText = TalkUiPolicy.contentWithoutChartTables(content)
+        assertFalse(richText.contains("| 日期"))
+        assertTrue(richText.contains("数据仅供参考"))
         val chart = TalkUiPolicy.chartData(content).single()
         assertEquals("指数表现", chart.title)
         assertEquals(listOf("09-05", "09-06"), chart.labels)
@@ -83,6 +86,15 @@ class TalkUiPolicyTest {
     fun malformedOrNonnumericMarkdownTablesDoNotBecomeCharts() {
         val content = "| 名称 | 说明 |\n| --- | --- |\n| A | 上涨 |\n| B | 下跌 |"
         assertTrue(TalkUiPolicy.chartData(content).isEmpty())
+        assertEquals(content, TalkUiPolicy.contentWithoutChartTables(content))
+    }
+
+    @Test
+    fun pieChartIsOnlyOfferedForOneNonNegativePartToWholeSeries() {
+        fun chart(vararg series: ChartSeriesUi) = ChartDataUi("t", listOf("A", "B"), "x", "y", series.toList())
+        assertTrue(TalkUiPolicy.canUsePie(chart(ChartSeriesUi("占比", listOf(1f, 2f)))))
+        assertFalse(TalkUiPolicy.canUsePie(chart(ChartSeriesUi("涨跌", listOf(-1f, 2f)))))
+        assertFalse(TalkUiPolicy.canUsePie(chart(ChartSeriesUi("A", listOf(1f)), ChartSeriesUi("B", listOf(2f)))))
     }
 
     @Test

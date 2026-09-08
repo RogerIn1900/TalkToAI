@@ -1,8 +1,5 @@
-import com.tencent.kuikly.gradle.config.KuiklyConfig
-
 plugins {
     kotlin("multiplatform")
-    kotlin("native.cocoapods")
     id("com.android.library")
     id("com.google.devtools.ksp")
     id("maven-publish")
@@ -22,44 +19,12 @@ kotlin {
         publishLibraryVariants("release")
     }
 
-    js(IR) {
-        browser {
-            webpackTask {
-                outputFileName = "nativevue2.js" // 最后输出的名字
-            }
-
-            commonWebpackConfig {
-                output?.library = null // 不导出全局对象，只导出必要的入口函数
-                devtool = "source-map" // 不使用默认的 eval 执行方式构建出 source-map，而是构建单独的 sourceMap 文件
-            }
-        }
-        binaries.executable() //将kotlin.js与kotlin代码打包成一份可直接运行的js文件
-    }
-
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
-
-    cocoapods {
-        summary = "Some description for the Shared Module"
-        homepage = "Link to the Shared Module homepage"
-        version = "1.0"
-        ios.deploymentTarget = "14.1"
-        podfile = project.file("../iosApp/Podfile")
-        framework {
-            baseName = "shared"
-            freeCompilerArgs = freeCompilerArgs + getCommonCompilerArgs()
-            isStatic = true
-            license = "MIT"
-        }
-        extraSpecAttributes["resources"] = "['src/commonMain/assets/**']"
-    }
-
     sourceSets {
         val commonMain by getting {
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
+                implementation("com.tencent.kuiklybase:KuiklyMarkdown:1.0.6-2.1.21")
                 // TalkToAI shared ViewModel uses coroutines for cancellable work.
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
             }
@@ -75,24 +40,6 @@ kotlin {
             }
         }
 
-        val iosX64Main by getting
-        val iosArm64Main by getting
-        val iosSimulatorArm64Main by getting
-        val iosMain by creating {
-            dependsOn(commonMain)
-            iosX64Main.dependsOn(this)
-            iosArm64Main.dependsOn(this)
-            iosSimulatorArm64Main.dependsOn(this)
-        }
-        val iosX64Test by getting
-        val iosArm64Test by getting
-        val iosSimulatorArm64Test by getting
-        val iosTest by creating {
-            dependsOn(commonTest)
-            iosX64Test.dependsOn(this)
-            iosArm64Test.dependsOn(this)
-            iosSimulatorArm64Test.dependsOn(this)
-        }
     }
 }
 
@@ -118,10 +65,6 @@ ksp {
 dependencies {
     compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
         add("kspAndroid", this)
-        add("kspIosArm64", this)
-        add("kspIosX64", this)
-        add("kspIosSimulatorArm64", this)
-        add("kspJs", this)
     }
 }
 
@@ -141,25 +84,4 @@ android {
 
 fun getPageName(): String {
     return (project.properties[KEY_PAGE_NAME] as? String) ?: ""
-}
-
-fun getCommonCompilerArgs(): List<String> {
-    return listOf(
-        "-Xallocator=std"
-    )
-}
-
-fun getLinkerArgs(): List<String> {
-    return listOf()
-}
-
-// Kuikly 插件配置
-configure<KuiklyConfig> {
-    // JS 产物配置
-    js {
-        // 构建产物名，与 KMM 插件 webpackTask#outputFileName 一致
-        outputName("nativevue2")
-        // 可选：分包构建时的页面列表，如果为空则构建全部页面
-        // addSplitPage("route","home")
-    }
 }

@@ -8,6 +8,7 @@ import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
@@ -28,6 +29,9 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
     private var darkMode = false
     private var renderedConfiguration: Triple<String, String, Boolean>? = null
     private val renderTask = Runnable { renderChart() }
+    private val lineChart by lazy { LineChart(context) }
+    private val barChart by lazy { BarChart(context) }
+    private val pieChart by lazy { PieChart(context) }
 
     private fun scheduleRender() {
         // Kuikly delivers data, type and theme separately in the same UI batch.
@@ -71,18 +75,21 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         val model = runCatching { ChartPayload.parse(JSONObject(chartData)) }.getOrNull() ?: return
         removeAllViews()
         val chart = when (chartType) {
-            TYPE_BAR -> createBarChart(model)
-            TYPE_PIE -> createPieChart(model)
-            else -> createLineChart(model)
+            TYPE_BAR -> updateBarChart(model)
+            TYPE_PIE -> updatePieChart(model)
+            else -> updateLineChart(model)
         }
+        // Chart instances survive type switches; only their validated data/configuration changes.
         addView(chart, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         renderedConfiguration = configuration
     }
 
-    private fun createLineChart(model: ChartPayload): LineChart = LineChart(context).apply {
-        configureCartesian(this, model)
+    private fun updateLineChart(model: ChartPayload): LineChart = lineChart.apply {
+        val secondary = ChartAxisPolicy.secondarySeriesIndices(model.series.map { it.values })
+        configureCartesian(this, model, secondary.isNotEmpty())
         data = LineData(model.series.mapIndexed { index, series ->
             LineDataSet(series.values.mapIndexed { x, value -> Entry(x.toFloat(), value) }, series.name).apply {
+                axisDependency = if (index in secondary) YAxis.AxisDependency.RIGHT else YAxis.AxisDependency.LEFT
                 color = SERIES_COLORS[index % SERIES_COLORS.size]
                 setCircleColor(color)
                 lineWidth = 2f
@@ -93,10 +100,12 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         invalidate()
     }
 
-    private fun createBarChart(model: ChartPayload): BarChart = BarChart(context).apply {
-        configureCartesian(this, model)
+    private fun updateBarChart(model: ChartPayload): BarChart = barChart.apply {
+        val secondary = ChartAxisPolicy.secondarySeriesIndices(model.series.map { it.values })
+        configureCartesian(this, model, secondary.isNotEmpty())
         val sets = model.series.mapIndexed { index, series ->
             BarDataSet(series.values.mapIndexed { x, value -> BarEntry(x.toFloat(), value) }, series.name).apply {
+                axisDependency = if (index in secondary) YAxis.AxisDependency.RIGHT else YAxis.AxisDependency.LEFT
                 color = SERIES_COLORS[index % SERIES_COLORS.size]
                 setDrawValues(false)
             }
@@ -107,7 +116,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         invalidate()
     }
 
-    private fun createPieChart(model: ChartPayload): PieChart = PieChart(context).apply {
+    private fun updatePieChart(model: ChartPayload): PieChart = pieChart.apply {
         description.isEnabled = false
         setUsePercentValues(false)
         // Category labels stay in the legend; drawing them on narrow slices makes both
@@ -127,11 +136,17 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         invalidate()
     }
 
-    private fun configureCartesian(chart: com.github.mikephil.charting.charts.BarLineChartBase<*>, model: ChartPayload) {
+    private fun configureCartesian(
+        chart: com.github.mikephil.charting.charts.BarLineChartBase<*>,
+        model: ChartPayload,
+        rightAxisEnabled: Boolean,
+    ) {
         // Axis meanings are already shown below the chart by Kuikly. An in-plot
         // description overlaps the date ticks on narrow screens.
         chart.description.isEnabled = false
-        chart.axisRight.isEnabled = false
+        chart.axisRight.isEnabled = rightAxisEnabled
+        chart.axisRight.textColor = foregroundColor()
+        chart.axisRight.gridColor = gridColor()
         chart.axisLeft.textColor = foregroundColor()
         chart.axisLeft.gridColor = gridColor()
         chart.legend.textColor = foregroundColor()
@@ -191,5 +206,17 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
             Color.rgb(245, 158, 11),
             Color.rgb(147, 51, 234),
         )
+    }
+}
+
+internal object ChartAxisPolicy {
+    private const val SECONDARY_AXIS_RATIO = 1_000f
+
+    fun secondarySeriesIndices(series: List<List<Float>>): Set<Int> {
+        val maxima = series.map { values -> values.maxOfOrNull { kotlin.math.abs(it) } ?: 0f }
+        val baseline = maxima.filter { it > 0f }.minOrNull() ?: return emptySet()
+        return maxima.mapIndexedNotNull { index, maximum ->
+            index.takeIf { maximum / baseline >= SECONDARY_AXIS_RATIO }
+        }.toSet()
     }
 }
