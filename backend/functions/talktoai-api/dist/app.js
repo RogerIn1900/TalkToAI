@@ -98,12 +98,58 @@ function inferMarketRequest(messages) {
         period: /分时|盘中/.test(content) ? "intraday" : /月线|月K/i.test(content) ? "month" : /周线|周K/i.test(content) ? "week" : "day",
     };
 }
-function toAiMessages(messages, market) {
+async function toAiMessages(messages, market, attachments = [], installationId = "", downloadAttachment) {
     const marketContext = market
         ? `\n\n${formatMarketContext(market)}`
         : "";
     // CloudBase hy3 expects a single leading system message.
-    return [{ role: "system", content: `${constants_1.SYSTEM_PROMPT}${marketContext}` }, ...messages];
+    const output = [
+        { role: "system", content: `${constants_1.SYSTEM_PROMPT}${marketContext}` },
+        ...messages.map((message) => ({ role: message.role, content: message.content })),
+    ];
+    if (attachments.length === 0)
+        return output;
+    if (!downloadAttachment) {
+        throw new ApiError(503, "ATTACHMENT_READ_NOT_CONFIGURED", "测试环境附件读取尚未配置", true);
+    }
+    const owner = (0, node_crypto_1.createHash)("sha256").update(installationId).digest("hex");
+    const expectedPath = `/talktoai/v1/${owner}/`;
+    const contentBlocks = [
+        { type: "text", text: messages.at(-1)?.content ?? "请分析附件" },
+    ];
+    let textBudget = constants_1.MAX_TEXT_ATTACHMENT_CONTEXT_BYTES;
+    for (const attachment of attachments) {
+        if (!attachment.objectRef.includes(expectedPath)) {
+            throw new ApiError(403, "ATTACHMENT_FORBIDDEN", "附件不属于当前安装", false);
+        }
+        const bytes = await downloadAttachment(attachment.objectRef);
+        if (bytes.length !== attachment.sizeBytes) {
+            throw new ApiError(409, "ATTACHMENT_CHANGED", "附件内容与上传记录不一致", true);
+        }
+        if (attachment.mimeType.startsWith("image/")) {
+            contentBlocks.push({
+                type: "text",
+                text: `下面图片的来源标记为【附件：${attachment.name}】。`,
+            });
+            contentBlocks.push({
+                type: "image_url",
+                image_url: { url: `data:${attachment.mimeType};base64,${bytes.toString("base64")}` },
+            });
+        }
+        else {
+            const selected = bytes.subarray(0, Math.max(0, textBudget));
+            textBudget -= selected.length;
+            const suffix = selected.length < bytes.length ? "\n[内容已按上下文上限截断]" : "";
+            contentBlocks.push({
+                type: "text",
+                text: `【附件：${attachment.name}；类型：${attachment.mimeType}】\n${selected.toString("utf8")}${suffix}`,
+            });
+        }
+    }
+    const lastUserIndex = output.map((message) => message.role).lastIndexOf("user");
+    if (lastUserIndex >= 0)
+        output[lastUserIndex] = { role: "user", content: contentBlocks };
+    return output;
 }
 function formatMarketContext(market) {
     const rows = market.data.slice(-20).map((bar) => `${bar.time},O=${bar.open},H=${bar.high},L=${bar.low},C=${bar.close},V=${bar.volume}`);
@@ -123,6 +169,13 @@ async function handleChat(req, res, deps, requestId) {
     if (deps.aiConfigured === false) {
         throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证", false);
     }
+    const marketRequest = inferMarketRequest(input.messages);
+    const market = marketRequest
+        ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
+        : undefined;
+    // Resolve and authorize attachment content before quota consumption and before SSE headers are sent.
+    // Validation failures therefore remain ordinary HTTP errors and never consume an AI request.
+    const modelMessages = await toAiMessages(input.messages, market, input.attachments, input.installationId, deps.downloadAttachment);
     const quota = await deps.quota.consume(input.installationId, deps.now());
     if (!quota.allowed)
         throw new ApiError(429, "DAILY_QUOTA_EXCEEDED", "今日AI请求次数已用完", false, quota.resetAt);
@@ -134,15 +187,14 @@ async function handleChat(req, res, deps, requestId) {
     });
     sse(res, "meta", { requestId, quota: { used: quota.used, limit: quota.limit, resetAt: quota.resetAt } });
     try {
-        const marketRequest = inferMarketRequest(input.messages);
-        const market = marketRequest
-            ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
-            : undefined;
         if (market)
             sse(res, "market", market);
+        for (const attachment of input.attachments ?? []) {
+            sse(res, "citation", { kind: "attachment", attachmentId: attachment.id, title: attachment.name });
+        }
         const result = await deps.createAiModel().streamText({
             model: process.env.AI_MODEL || constants_1.DEFAULT_AI_MODEL,
-            messages: toAiMessages(input.messages, market),
+            messages: modelMessages,
         });
         let fullText = "";
         for await (const text of result.textStream) {
@@ -195,7 +247,7 @@ function createApp(deps) {
                         aiReady: deps.aiConfigured !== false,
                         marketReady: true,
                         marketProvider: deps.marketProvider ?? "injected",
-                        attachments: deps.uploadAttachment ? "ready" : "configuration_required",
+                        attachments: deps.uploadAttachment && deps.downloadAttachment ? "ready" : "configuration_required",
                     },
                     requestId,
                 });
@@ -266,6 +318,12 @@ function createCloudBaseDependencies() {
         marketProvider: "fixture",
         aiConfigured: true,
         uploadAttachment: (cloudPath, content) => app.uploadFile({ cloudPath, fileContent: content }),
+        downloadAttachment: async (fileID) => {
+            const result = await app.downloadFile({ fileID });
+            if (result.fileContent === undefined)
+                throw new Error("attachment-download-empty");
+            return Buffer.isBuffer(result.fileContent) ? result.fileContent : Buffer.from(result.fileContent);
+        },
         createAiModel: () => app.ai().createModel(process.env.AI_PROVIDER || constants_1.DEFAULT_AI_PROVIDER),
         now: () => new Date(),
     };

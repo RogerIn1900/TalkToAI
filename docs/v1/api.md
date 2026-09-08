@@ -4,11 +4,11 @@ Base URL 由 Android `BuildConfig` 注入，正式测试环境必须为 HTTPS。
 
 ## POST /v1/chat/completions
 
-请求：`installationId`、`conversationId`、`messages[]`、`attachments[]`、`stream=true`。附件仅传已上传对象的受控引用与 MIME 元数据，不内联文件正文。
+请求：`installationId`、`conversationId`、`messages[]`、`attachments[]`、`stream=true`。附件仅传已上传对象的受控引用与 MIME 元数据，不由 Android 内联文件正文。服务端重新校验对象归属、声明大小和真实字节数；CSV/TXT 最多抽取 64 KiB 作为不可信上下文，图片转换成仅供 CloudBase 模型调用的 data URL 内容块。
 
-成功：`text/event-stream`，事件类型为 `meta`、可选 `market`、`delta`、`citation`、`done`。当最后一条用户消息命中行情意图时，服务端先调用只读 `MarketDataProvider`，并保证 `market` 事件早于首个 `delta`；该事件包含标准化 OHLCV、来源、数据时间、获取时间、新鲜度和原因，客户端据此先展示图表。`citation` 仅由模型正文中实际出现且可解析的 HTTPS URL 生成；没有链接时客户端明确提示没有可核验外部引用。客户端以 `done` 结束；断开连接即取消上游生成。
+成功：`text/event-stream`，事件类型为 `meta`、可选 `market`、`delta`、`citation`、`done`。当最后一条用户消息命中行情意图时，服务端先调用只读 `MarketDataProvider`，并保证 `market` 事件早于首个 `delta`；该事件包含标准化 OHLCV、来源、数据时间、获取时间、新鲜度和原因，客户端据此先展示图表。`citation` 可来自模型正文中的 HTTPS URL，也可为 `{kind:"attachment", label:"文件名"}` 的附件来源。客户端以 `done` 结束；断开连接即取消上游生成。
 
-模型正文传输协议仍为 Markdown 文本，不是 JSON 或 XML。Android 端不显示 Markdown 标记：标题、列表、段落和代码块转换为原生 Kuikly 样式，满足数值要求的 Markdown 表格转换为结构化图表（默认折线，可切换柱状和饼状），表格源码不进入对话展示。只有用户明确要求原始结构化数据时，模型才可返回 JSON/XML 代码块。
+模型正文传输协议仍为 Markdown 文本，不是 JSON 或 XML。Android 端使用 KuiklyMarkdown 渲染完成态回答；满足数值要求的 Markdown 表格额外转换为结构化图表（默认折线，可切换柱状，非负单序列才允许饼图）。只有用户明确要求原始结构化数据时，模型才可返回 JSON/XML 代码块。
 
 错误：JSON `{ "error": { "code", "message", "retryable", "resetAt"? }, "requestId" }`。稳定错误码：`INVALID_ARGUMENT`、`UNAUTHORIZED_INSTALLATION`、`AI_NOT_CONFIGURED`、`DAILY_QUOTA_EXCEEDED`、`UPSTREAM_TIMEOUT`、`UPSTREAM_UNAVAILABLE`、`INTERNAL_ERROR`。
 

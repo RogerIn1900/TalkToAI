@@ -18,7 +18,6 @@
         "DAILY_AI_LIMIT": "500",
         "APP_TIME_ZONE": "Asia/Shanghai",
         "MARKET_PROVIDER": "fixture",
-        "QUOTA_STORE": "sql",
         "ALLOW_EPHEMERAL_QUOTA": "true"
       }
     }

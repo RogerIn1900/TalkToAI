@@ -19,7 +19,7 @@ curl -fsS 'https://stockai-test-d6gd0ho1z97f0bbde.service.tcloudbase.com/talktoa
 
 测试环境通过 CloudBase Node SDK 在云函数中调用 `cloudbase / hy3`、数据库和云存储。Android、Git 与公开接口均不保存或返回服务端密钥。`/health` 已实测返回 `aiReady=true` 和 `attachments=ready`；如运行环境身份策略变化，可在测试函数环境变量中配置 `CLOUDBASE_APIKEY`，代码会优先把它作为 SDK `accessKey`，但不得写入仓库。
 
-当前 `ALLOW_EPHEMERAL_QUOTA=true`，每日 500 次只在单个温实例内准确，冷启动或横向扩容会重新计数。接入持久化 SQL/NoSQL 原子计数后必须删除该变量，才可把 500 次声明为跨实例强约束。
+当前 `ALLOW_EPHEMERAL_QUOTA=true`，每日 500 次只在单个温实例内准确，冷启动或横向扩容会重新计数。本轮曾关闭该回退并部署测试：HTTP 聊天因运行时数据库身份不足返回 500；因此已恢复可工作的内存配额，未把失败配置留在测试环境。接入持久化 SQL/NoSQL 原子计数后必须删除该变量，才可把 500 次声明为跨实例强约束。
 
 配额表与原子函数迁移位于 `backend/database/001_talktoai_quota.sql`。迁移已在测试 PostgreSQL 执行；切换到 `ALLOW_EPHEMERAL_QUOTA=false` 前，还必须让 HTTP 云函数具备调用 `$runSQL` 的服务端身份并通过远端 1/500/501 与并发验收。
 

@@ -7,8 +7,9 @@ import { MemoryQuotaStore } from "../src/quota";
 
 async function withServer(
   run: (baseUrl: string) => Promise<void>,
-  onModelMessages: (messages: Array<{ role: string; content: string }>) => void = () => undefined,
+  onModelMessages: (messages: Array<{ role: string; content: unknown }>) => void = () => undefined,
 ): Promise<void> {
+  const uploaded = new Map<string, Buffer>();
   const app = createApp({
     quota: new MemoryQuotaStore(1),
     market: new FixtureMarketDataProvider(),
@@ -21,7 +22,16 @@ async function withServer(
         };
       },
     }),
-    uploadAttachment: async (cloudPath, content) => ({ fileID: `cloud://${cloudPath}?bytes=${content.length}` }),
+    uploadAttachment: async (cloudPath, content) => {
+      const fileID = `cloud://${cloudPath}`;
+      uploaded.set(fileID, content);
+      return { fileID };
+    },
+    downloadAttachment: async (fileID) => {
+      const content = uploaded.get(fileID);
+      if (!content) throw new Error("fixture-attachment-not-found");
+      return content;
+    },
     now: () => new Date("2026-09-05T01:00:00Z"),
   });
   app.listen(0, "127.0.0.1");
@@ -45,7 +55,7 @@ test("health does not expose credentials", () => withServer(async (baseUrl) => {
 }));
 
 test("market intent streams chart data before AI and injects freshness context", () => {
-  let modelMessages: Array<{ role: string; content: string }> = [];
+  let modelMessages: Array<{ role: string; content: unknown }> = [];
   return withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
@@ -62,7 +72,7 @@ test("market intent streams chart data before AI and injects freshness context",
     assert.ok(text.indexOf("event: market") < text.indexOf("event: delta"));
     assert.match(text, /000001\.SH/);
     assert.match(text, /STALE/);
-    assert.equal(modelMessages.some((message) => message.content.includes("MARKET_CONTEXT") && message.content.includes("STALE")), true);
+    assert.equal(modelMessages.some((message) => typeof message.content === "string" && message.content.includes("MARKET_CONTEXT") && message.content.includes("STALE")), true);
   }, (messages) => { modelMessages = messages; });
 });
 
@@ -87,6 +97,73 @@ test("attachment upload validates metadata and returns a controlled object refer
   assert.equal(body.sizeBytes, 12);
   assert.match(body.objectRef, /^cloud:\/\/talktoai\/v1\//);
 }));
+
+test("uploaded TXT enters model context with an attachment source marker", async () => {
+  let modelMessages: Array<{ role: string; content: unknown }> = [];
+  await withServer(async (baseUrl) => {
+    const installationId = "install_1234567890abcdef";
+    const attachmentId = "abcdef0123456789";
+    const upload = await fetch(`${baseUrl}/v1/attachments/${attachmentId}`, {
+      method: "PUT",
+      headers: {
+        "content-type": "text/plain",
+        "x-installation-id": installationId,
+        "x-file-name": encodeURIComponent("notes.txt"),
+      },
+      body: "浦发银行收盘价为10.25",
+    });
+    const attachment = await upload.json() as any;
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        installationId,
+        conversationId: "conversation-attachment",
+        messages: [{ role: "user", content: "总结附件" }],
+        attachments: [{
+          id: attachment.id,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          objectRef: attachment.objectRef,
+        }],
+        stream: true,
+      }),
+    });
+    const text = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(text, /"kind":"attachment"/);
+    const latestUser = [...modelMessages].reverse().find((message) => message.role === "user");
+    assert.ok(Array.isArray(latestUser?.content));
+    assert.match(JSON.stringify(latestUser?.content), /浦发银行收盘价为10\.25/);
+    assert.match(JSON.stringify(latestUser?.content), /附件：notes\.txt/);
+  }, (messages) => { modelMessages = messages; });
+});
+
+test("chat rejects attachment object references owned by another installation", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        installationId: "install_1234567890abcdef",
+        conversationId: "conversation-foreign-attachment",
+        messages: [{ role: "user", content: "读取附件" }],
+        attachments: [{
+          id: "abcdef0123456789",
+          name: "notes.txt",
+          mimeType: "text/plain",
+          sizeBytes: 12,
+          objectRef: "cloud://talktoai/v1/not-the-owner/abcdef0123456789/notes.txt",
+        }],
+        stream: true,
+      }),
+    });
+    const body = await response.json() as any;
+    assert.equal(response.status, 403);
+    assert.equal(body.error.code, "ATTACHMENT_FORBIDDEN");
+  });
+});
 
 test("chat streams meta deltas and done", () => withServer(async (baseUrl) => {
   const response = await fetch(`${baseUrl}/v1/chat/completions`, {

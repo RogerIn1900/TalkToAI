@@ -8,11 +8,12 @@ import {
   MAX_IMAGE_ATTACHMENT_BYTES,
   MAX_REQUEST_BYTES,
   MAX_TEXT_ATTACHMENT_BYTES,
+  MAX_TEXT_ATTACHMENT_CONTEXT_BYTES,
   SYSTEM_PROMPT,
 } from "./constants";
 import { FixtureMarketDataProvider } from "./fixtures";
 import { CloudBaseQuotaStore, CloudBaseSqlQuotaStore, MemoryQuotaStore } from "./quota";
-import type { Bar, ChatMessage, MarketDataProvider, MarketEnvelope, Period, QuotaStore } from "./types";
+import type { AttachmentRef, Bar, ChatMessage, MarketDataProvider, MarketEnvelope, Period, QuotaStore } from "./types";
 import { parseChatRequest, parseIsoDate, parsePeriod, parseSymbol, RequestValidationError } from "./validation";
 
 interface AiTextStream {
@@ -20,8 +21,13 @@ interface AiTextStream {
   usage: Promise<unknown>;
 }
 
+type AiContent = string | Array<
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+>;
+
 interface AiModel {
-  streamText(input: { model: string; messages: Array<{ role: string; content: string }> }): Promise<AiTextStream>;
+  streamText(input: { model: string; messages: Array<{ role: string; content: AiContent }> }): Promise<AiTextStream>;
 }
 
 interface AppDependencies {
@@ -32,6 +38,7 @@ interface AppDependencies {
   aiConfigured?: boolean;
   marketProvider?: string;
   uploadAttachment?: (cloudPath: string, content: Buffer) => Promise<{ fileID: string }>;
+  downloadAttachment?: (fileID: string) => Promise<Buffer>;
 }
 
 class ApiError extends Error {
@@ -132,15 +139,61 @@ function inferMarketRequest(messages: ChatMessage[]): MarketRequest | undefined 
   };
 }
 
-function toAiMessages(
+async function toAiMessages(
   messages: ChatMessage[],
   market?: MarketEnvelope<Bar[]>,
-): Array<{ role: string; content: string }> {
+  attachments: AttachmentRef[] = [],
+  installationId = "",
+  downloadAttachment?: (fileID: string) => Promise<Buffer>,
+): Promise<Array<{ role: string; content: AiContent }>> {
   const marketContext = market
     ? `\n\n${formatMarketContext(market)}`
     : "";
   // CloudBase hy3 expects a single leading system message.
-  return [{ role: "system", content: `${SYSTEM_PROMPT}${marketContext}` }, ...messages];
+  const output: Array<{ role: string; content: AiContent }> = [
+    { role: "system", content: `${SYSTEM_PROMPT}${marketContext}` },
+    ...messages.map((message) => ({ role: message.role, content: message.content })),
+  ];
+  if (attachments.length === 0) return output;
+  if (!downloadAttachment) {
+    throw new ApiError(503, "ATTACHMENT_READ_NOT_CONFIGURED", "测试环境附件读取尚未配置", true);
+  }
+  const owner = createHash("sha256").update(installationId).digest("hex");
+  const expectedPath = `/talktoai/v1/${owner}/`;
+  const contentBlocks: Exclude<AiContent, string> = [
+    { type: "text", text: messages.at(-1)?.content ?? "请分析附件" },
+  ];
+  let textBudget = MAX_TEXT_ATTACHMENT_CONTEXT_BYTES;
+  for (const attachment of attachments) {
+    if (!attachment.objectRef.includes(expectedPath)) {
+      throw new ApiError(403, "ATTACHMENT_FORBIDDEN", "附件不属于当前安装", false);
+    }
+    const bytes = await downloadAttachment(attachment.objectRef);
+    if (bytes.length !== attachment.sizeBytes) {
+      throw new ApiError(409, "ATTACHMENT_CHANGED", "附件内容与上传记录不一致", true);
+    }
+    if (attachment.mimeType.startsWith("image/")) {
+      contentBlocks.push({
+        type: "text",
+        text: `下面图片的来源标记为【附件：${attachment.name}】。`,
+      });
+      contentBlocks.push({
+        type: "image_url",
+        image_url: { url: `data:${attachment.mimeType};base64,${bytes.toString("base64")}` },
+      });
+    } else {
+      const selected = bytes.subarray(0, Math.max(0, textBudget));
+      textBudget -= selected.length;
+      const suffix = selected.length < bytes.length ? "\n[内容已按上下文上限截断]" : "";
+      contentBlocks.push({
+        type: "text",
+        text: `【附件：${attachment.name}；类型：${attachment.mimeType}】\n${selected.toString("utf8")}${suffix}`,
+      });
+    }
+  }
+  const lastUserIndex = output.map((message) => message.role).lastIndexOf("user");
+  if (lastUserIndex >= 0) output[lastUserIndex] = { role: "user", content: contentBlocks };
+  return output;
 }
 
 function formatMarketContext(market: MarketEnvelope<Bar[]>): string {
@@ -164,6 +217,19 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, deps: AppDe
   if (deps.aiConfigured === false) {
     throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证", false);
   }
+  const marketRequest = inferMarketRequest(input.messages);
+  const market = marketRequest
+    ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
+    : undefined;
+  // Resolve and authorize attachment content before quota consumption and before SSE headers are sent.
+  // Validation failures therefore remain ordinary HTTP errors and never consume an AI request.
+  const modelMessages = await toAiMessages(
+    input.messages,
+    market,
+    input.attachments,
+    input.installationId,
+    deps.downloadAttachment,
+  );
   const quota = await deps.quota.consume(input.installationId, deps.now());
   if (!quota.allowed) throw new ApiError(429, "DAILY_QUOTA_EXCEEDED", "今日AI请求次数已用完", false, quota.resetAt);
 
@@ -176,14 +242,13 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, deps: AppDe
   sse(res, "meta", { requestId, quota: { used: quota.used, limit: quota.limit, resetAt: quota.resetAt } });
 
   try {
-    const marketRequest = inferMarketRequest(input.messages);
-    const market = marketRequest
-      ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
-      : undefined;
     if (market) sse(res, "market", market);
+    for (const attachment of input.attachments ?? []) {
+      sse(res, "citation", { kind: "attachment", attachmentId: attachment.id, title: attachment.name });
+    }
     const result = await deps.createAiModel().streamText({
       model: process.env.AI_MODEL || DEFAULT_AI_MODEL,
-      messages: toAiMessages(input.messages, market),
+      messages: modelMessages,
     });
     let fullText = "";
     for await (const text of result.textStream) {
@@ -235,7 +300,7 @@ export function createApp(deps: AppDependencies) {
             aiReady: deps.aiConfigured !== false,
             marketReady: true,
             marketProvider: deps.marketProvider ?? "injected",
-            attachments: deps.uploadAttachment ? "ready" : "configuration_required",
+            attachments: deps.uploadAttachment && deps.downloadAttachment ? "ready" : "configuration_required",
           },
           requestId,
         });
@@ -304,6 +369,11 @@ function createCloudBaseDependencies(): AppDependencies {
     marketProvider: "fixture",
     aiConfigured: true,
     uploadAttachment: (cloudPath, content) => app.uploadFile({ cloudPath, fileContent: content }),
+    downloadAttachment: async (fileID) => {
+      const result = await app.downloadFile({ fileID });
+      if (result.fileContent === undefined) throw new Error("attachment-download-empty");
+      return Buffer.isBuffer(result.fileContent) ? result.fileContent : Buffer.from(result.fileContent);
+    },
     createAiModel: () => app.ai().createModel(process.env.AI_PROVIDER || DEFAULT_AI_PROVIDER) as AiModel,
     now: () => new Date(),
   };
