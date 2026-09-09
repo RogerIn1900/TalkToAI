@@ -6,6 +6,29 @@ import org.junit.Test
 
 class DashboardContractsTest {
     @Test
+    fun csvRejectsQuotesInsidePlainFieldsAndCharactersAfterClosingQuote() {
+        listOf("label,value\na\"b\",1", "label,value\n\"a\"tail,1", "label,value\na,1\"\"")
+            .forEach {
+                assertThrows(IllegalArgumentException::class.java) { DashboardCsv.parse(it) }
+            }
+    }
+
+    @Test
+    fun csvAcceptsEscapedQuotesMultilineFieldsBomAndExactRowLimit() {
+        assertEquals(
+            listOf(Datum("a\"b\nc", 1.0)),
+            DashboardCsv.parse("\uFEFFlabel,value\r\n\"a\"\"b\nc\",1\r\n"),
+        )
+        assertEquals(
+            DashboardCsv.MAX_ROWS,
+            DashboardCsv.parse("label,value\n" + "a,1\n".repeat(DashboardCsv.MAX_ROWS)).size,
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            DashboardCsv.parse("label,value\n" + "a".repeat(DashboardCsv.MAX_BYTES) + ",1")
+        }
+    }
+
+    @Test
     fun documentRoundTripPreservesConfigurationAndLayout() {
         val doc =
             DashboardDocument(

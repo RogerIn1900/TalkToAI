@@ -15,6 +15,144 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class EditableDashboardTest {
     @Test
+    fun unchangedInputsReuseRendererAndChangedInputsInvalidateIt() {
+        ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val board = DashboardView(activity)
+                var created = 0
+                board.contentFactory = { c, card, rows, unit, color ->
+                    created++
+                    DashboardContentView(c, card, rows, unit, color)
+                }
+                val data = TalkDashboardView.demoSources()
+                board.submit(TalkDashboardView.initial(), data)
+                activity.setContentView(board)
+                assertEquals(3, created)
+                board.beginEditing()
+                board.cancelEditing()
+                board.updateSources(data.toList())
+                assertEquals("Editing and equivalent catalogs must reuse renderers", 3, created)
+                board.updateSources(
+                    data.mapIndexed { i, source ->
+                        if (i == 0) source.copy(rows = listOf(Datum("changed", 1.0))) else source
+                    }
+                )
+                assertEquals("Only changed source redraws", 4, created)
+                board.theme = board.theme.copy(foreground = android.graphics.Color.RED)
+                board.updateSources(data)
+                assertEquals("Theme changes invalidate all renderers", 7, created)
+            }
+        }
+    }
+
+    @Test
+    fun reattachedHostLoadsStateAndPreservesEditingDraft() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = DashboardStore(context)
+        val before = store.sources()
+        lateinit var board: TalkDashboardView
+        var refreshedSourceRendered = false
+        try {
+            ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    board = TalkDashboardView(activity) {}
+                    board.contentFactory = { c, card, rows, unit, color ->
+                        if (rows.any { it.label == "reattach-source-row" })
+                            refreshedSourceRendered = true
+                        DashboardContentView(c, card, rows, unit, color)
+                    }
+                    activity.setContentView(board)
+                }
+                awaitReady(scenario, board)
+                scenario.onActivity { activity ->
+                    board.submit(TalkDashboardView.initial(), TalkDashboardView.demoSources())
+                    board.beginEditing()
+                    board.session.change(
+                        board.session.document.copy(
+                            name = "reattach-draft",
+                            cards =
+                                board.session.document.cards.mapIndexed { index, card ->
+                                    if (index == 0) card.copy(sourceId = "reattach-source")
+                                    else card
+                                },
+                        )
+                    )
+                    activity.setContentView(android.widget.FrameLayout(activity))
+                }
+                store.appendSource(
+                    DashboardSource(
+                        "reattach-source",
+                        "source",
+                        SourceKind.IMPORT,
+                        "value",
+                        listOf(Datum("reattach-source-row", 1.0)),
+                        "test",
+                    )
+                )
+                scenario.onActivity { activity -> activity.setContentView(board) }
+                awaitReady(scenario, board)
+                scenario.onActivity {
+                    assertEquals("reattach-draft", board.session.document.name)
+                    assertTrue(board.session.editing)
+                    assertTrue(
+                        "Reattach must refresh sources created while detached",
+                        refreshedSourceRendered,
+                    )
+                    board.cancelEditing()
+                }
+            }
+        } finally {
+            store.saveSources(before)
+        }
+    }
+
+    @Test
+    fun concurrentSourceAppendsFromSeparateStoresDoNotLoseRows() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = DashboardStore(context)
+        val before = store.sources()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        try {
+            val jobs =
+                (0 until 12).map { index ->
+                    pool.submit {
+                        DashboardStore(context)
+                            .appendSource(
+                                DashboardSource(
+                                    "concurrent-$index",
+                                    "source-$index",
+                                    SourceKind.IMPORT,
+                                    "value",
+                                    listOf(Datum("row", index.toDouble())),
+                                    "test",
+                                )
+                            )
+                    }
+                }
+            jobs.forEach { it.get(5, java.util.concurrent.TimeUnit.SECONDS) }
+            assertEquals(before.size + 12, store.sources().size)
+            assertEquals(12, store.sources().count { it.id.startsWith("concurrent-") })
+        } finally {
+            pool.shutdownNow()
+            pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)
+            store.saveSources(before)
+        }
+    }
+
+    private fun awaitReady(
+        scenario: ActivityScenario<KuiklyRenderActivity>,
+        board: TalkDashboardView,
+    ) {
+        val deadline = SystemClock.uptimeMillis() + 5000
+        var ready = false
+        while (!ready && SystemClock.uptimeMillis() < deadline) {
+            scenario.onActivity { ready = board.readyForInteraction }
+            if (!ready) SystemClock.sleep(20)
+        }
+        assertTrue("Host must finish loading after reattach", ready)
+    }
+
+    @Test
     fun importedPickerWorksWithKuiklyStyleWrappedContext() {
         var opened = false
         ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->

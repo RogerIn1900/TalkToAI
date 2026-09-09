@@ -37,7 +37,7 @@ adb -s emulator-5554 shell am start -W -n com.example.talktoai/.KuiklyRenderActi
 - [测试环境部署](docs/v1/deployment.md)
 - [验证报告与剩余风险](docs/v1/test-report.md)
 
-## 可编辑看板（UI SDK 0.2.0）
+## 可编辑看板（UI SDK 0.2.1）
 
 行情页通过 `market-ui` Git 子模块和 Gradle 组合构建使用独立 UI SDK。
 

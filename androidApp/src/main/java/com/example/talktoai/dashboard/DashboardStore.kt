@@ -43,91 +43,48 @@ class DashboardStore(context: Context) {
         }
     }
 
-    fun saveSources(sources: List<DashboardSource>) {
-        val array = JSONArray()
-        sources
-            .filter { it.kind != SourceKind.DATA }
-            .forEach { source ->
-                array.put(
-                    JSONObject()
-                        .put("id", source.id)
-                        .put("name", source.name)
-                        .put("kind", source.kind.name)
-                        .put("unit", source.unit)
-                        .put("provenance", source.provenance)
-                        .put("simulated", source.simulated)
-                        .put(
-                            "rows",
-                            JSONArray().apply {
-                                source.rows.forEach { row ->
-                                    put(
-                                        JSONObject()
-                                            .put("label", row.label)
-                                            .put("value", row.value)
-                                            .put("time", row.timeMs)
-                                    )
-                                }
-                            },
-                        )
-                )
-            }
-        check(preferences.edit().putString("sources", array.toString()).commit()) { "数据保存失败" }
-    }
-}
+    /** All view instances share one read-modify-write boundary in this process. */
+    fun appendSource(source: DashboardSource): List<DashboardSource> =
+        synchronized(sourceLock) {
+            val next = sources() + source
+            require(next.map { it.id }.distinct().size == next.size) { "数据源 ID 重复" }
+            saveSources(next)
+            next
+        }
 
-/** Deliberately small CSV contract, with quoted fields supported and bounded input. */
-object DashboardCsv {
-    const val MAX_BYTES = 256 * 1024
-    const val MAX_ROWS = 1000
+    fun saveSources(sources: List<DashboardSource>) =
+        synchronized(sourceLock) {
+            val array = JSONArray()
+            sources
+                .filter { it.kind != SourceKind.DATA }
+                .forEach { source ->
+                    array.put(
+                        JSONObject()
+                            .put("id", source.id)
+                            .put("name", source.name)
+                            .put("kind", source.kind.name)
+                            .put("unit", source.unit)
+                            .put("provenance", source.provenance)
+                            .put("simulated", source.simulated)
+                            .put(
+                                "rows",
+                                JSONArray().apply {
+                                    source.rows.forEach { row ->
+                                        put(
+                                            JSONObject()
+                                                .put("label", row.label)
+                                                .put("value", row.value)
+                                                .put("time", row.timeMs)
+                                        )
+                                    }
+                                },
+                            )
+                    )
+                }
+            check(preferences.edit().putString("sources", array.toString()).commit()) { "数据保存失败" }
+        }
 
-    fun parse(text: String): List<Datum> {
-        require(text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "CSV 最大 256 KB" }
-        val records = mutableListOf<List<String>>()
-        var record = mutableListOf<String>()
-        val field = StringBuilder()
-        var quoted = false
-        var i = 0
-        while (i < text.length) {
-            val ch = text[i]
-            when {
-                ch == '"' && quoted && i + 1 < text.length && text[i + 1] == '"' -> {
-                    field.append('"')
-                    i++
-                }
-                ch == '"' -> quoted = !quoted
-                ch == ',' && !quoted -> {
-                    record.add(field.toString())
-                    field.clear()
-                }
-                ch == '\n' && !quoted -> {
-                    record.add(field.toString().trimEnd('\r'))
-                    field.clear()
-                    if (record.any { it.isNotBlank() }) records.add(record)
-                    record = mutableListOf()
-                }
-                else -> field.append(ch)
-            }
-            i++
-        }
-        require(!quoted) { "CSV 引号未闭合" }
-        record.add(field.toString().trimEnd('\r'))
-        if (record.any { it.isNotBlank() }) records.add(record)
-        require(records.size in 2..MAX_ROWS + 1) { "CSV 需要表头和 1–1000 条数据" }
-        val header = records.first().map { it.trim().removePrefix("\uFEFF") }
-        require(
-            header == listOf("label", "value") || header == listOf("label", "value", "timeMs")
-        ) {
-            "表头应为 label,value 或 label,value,timeMs"
-        }
-        return records.drop(1).mapIndexed { index, row ->
-            require(row.size == header.size && row[0].isNotBlank()) { "第 ${index+2} 行列数或名称无效" }
-            val value = row[1].trim().toDoubleOrNull()
-            require(value != null && value.isFinite()) { "第 ${index+2} 行数值无效" }
-            val time =
-                if (header.size == 3 && row[2].isNotBlank())
-                    row[2].trim().toLongOrNull().also { require(it != null) { "时间必须为毫秒时间戳" } }
-                else null
-            Datum(row[0].trim(), value, time)
-        }
+    private companion object {
+        val sourceLock = Any()
     }
 }

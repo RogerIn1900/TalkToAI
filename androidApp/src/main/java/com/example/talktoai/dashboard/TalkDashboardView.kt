@@ -16,14 +16,28 @@ class TalkDashboardView(
 ) : DashboardView(context), IKuiklyRenderViewExport {
     private val store = DashboardStore(context)
     private var catalog = demoSources()
-    private var io = Executors.newSingleThreadExecutor()
     private var closed = false
+    private var generation = 0
+    private var loadedOnce = false
+    private var loading = true
+    private var loadFailure = false
+    internal val readyForInteraction: Boolean
+        get() = !closed && !loading && !loadFailure
+
+    private fun deliver(token: Int, action: () -> Unit) {
+        post { if (!closed && token == generation) action() }
+    }
 
     init {
         onSave = { document, done ->
-            io.execute {
-                val result = runCatching { store.save(document) }
-                post { if (!closed) done(result) }
+            if (closed || loading || loadFailure) {
+                done(Result.failure(IllegalStateException("看板尚未成功读取，请重新打开")))
+            } else {
+                val token = generation
+                io.execute {
+                    val result = runCatching { store.save(document) }
+                    deliver(token) { done(result) }
+                }
             }
         }
         onImport = { importCsv() }
@@ -38,54 +52,61 @@ class TalkDashboardView(
                 )
             persistSource(snapshot)
         }
+    }
+
+    private fun loadState() {
+        loading = true
+        val token = generation
         io.execute {
-            val loaded = runCatching { (store.load() ?: initial()) to (catalog + store.sources()) }
-            post {
-                if (!closed)
-                    loaded.fold(
-                        { (doc, data) ->
-                            catalog = data
-                            submit(doc, catalog)
-                        },
-                        { failure ->
-                            // Keep corrupt stored values untouched; do not silently replace them
-                            // with samples.
-                            submit(DashboardDocument("看板读取失败", emptyList()), catalog)
-                            onSave = { _, done ->
-                                done(Result.failure(IllegalStateException("原配置读取失败，请先备份数据")))
-                            }
-                            Toast.makeText(context, failure.message ?: "看板读取失败", Toast.LENGTH_LONG)
-                                .show()
-                        },
-                    )
+            val loaded = runCatching {
+                (store.load() ?: initial()) to (demoSources() + store.sources())
+            }
+            deliver(token) {
+                loading = false
+                loadFailure = loaded.isFailure
+                loaded.fold(
+                    { (doc, data) ->
+                        catalog = data
+                        if (loadedOnce) updateSources(catalog) else submit(doc, catalog)
+                        loadedOnce = true
+                    },
+                    { failure ->
+                        if (!loadedOnce) submit(DashboardDocument("看板读取失败", emptyList()), catalog)
+                        Toast.makeText(context, failure.message ?: "看板读取失败", Toast.LENGTH_LONG)
+                            .show()
+                    },
+                )
             }
         }
     }
 
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean =
+        if (loading) true else super.dispatchTouchEvent(event)
+
     private fun persistSource(source: DashboardSource) {
+        if (closed || loadFailure) return
+        val token = generation
         io.execute {
             val result = runCatching {
-                val next = store.sources() + source
-                store.saveSources(next)
-                demoSources() + next
+                demoSources() + store.appendSource(source)
             }
-            post {
-                if (!closed)
-                    result.fold(
-                        { next ->
-                            catalog = next
-                            updateSources(catalog)
-                            Toast.makeText(context, "已保存，可在添加卡片中关联", Toast.LENGTH_LONG).show()
-                        },
-                        { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() },
-                    )
+            deliver(token) {
+                result.fold(
+                    { next ->
+                        catalog = next
+                        updateSources(catalog)
+                        Toast.makeText(context, "已保存，可在添加卡片中关联", Toast.LENGTH_LONG).show()
+                    },
+                    { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() },
+                )
             }
         }
     }
 
     private fun importCsv() {
+        val token = generation
         pickAttachment { result ->
-            if (!closed)
+            if (!closed && token == generation)
                 result.fold(
                     { attachment ->
                         io.execute {
@@ -108,15 +129,14 @@ class TalkDashboardView(
                                     "本机导入 · ${attachment.name}",
                                 )
                             }
-                            post {
-                                if (!closed)
-                                    parsed.fold(
-                                        ::persistSource,
-                                        {
-                                            Toast.makeText(context, it.message, Toast.LENGTH_LONG)
-                                                .show()
-                                        },
-                                    )
+                            deliver(token) {
+                                parsed.fold(
+                                    ::persistSource,
+                                    {
+                                        Toast.makeText(context, it.message, Toast.LENGTH_LONG)
+                                            .show()
+                                    },
+                                )
                             }
                         }
                     },
@@ -145,16 +165,20 @@ class TalkDashboardView(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         closed = false
-        if (io.isShutdown) io = Executors.newSingleThreadExecutor()
+        generation++
+        loadState()
     }
 
     override fun onDetachedFromWindow() {
         closed = true
-        io.shutdown()
+        generation++
         super.onDetachedFromWindow()
     }
 
     companion object {
+        // One process-lifetime worker keeps writes and subsequent reattach loads ordered.
+        private val io = Executors.newSingleThreadExecutor()
+
         fun demoSources(): List<DashboardSource> =
             listOf(
                 DashboardSource(
