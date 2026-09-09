@@ -1,0 +1,42 @@
+
+> talktoai-api@1.0.0 test
+> node --import tsx --test test/*.test.ts
+
+✔ overview retains available indices when the first source fails (65.840875ms)
+✔ health does not expose credentials (7.747333ms)
+✔ health publishes the development source catalog without credentials (1.980917ms)
+✔ market intent streams chart data before AI and injects freshness context (2.919333ms)
+✔ latest market tool result overrides a stale assistant denial in long conversation context (3.275916ms)
+✔ market rejects unsupported symbol (1.7435ms)
+✔ attachment upload validates metadata and returns a controlled object reference (1.845416ms)
+✔ uploaded TXT enters model context with an attachment source marker (4.2955ms)
+✔ chat rejects attachment object references owned by another installation (1.68975ms)
+✔ chat streams meta deltas and done (2.76175ms)
+✔ chat enforces daily quota (2.30175ms)
+✔ unconfigured AI fails before consuming quota (1.968875ms)
+✔ fixture never labels historical data as real-time fresh (7.68775ms)
+✔ weekly fixture aggregates OHLCV into one bar (0.145833ms)
+✔ intraday is fresh within 60 seconds during trading (2.955166ms)
+✔ intraday is stale after five minutes during trading (0.256834ms)
+✔ unknown is returned when calendar is unavailable (0.082834ms)
+✔ index bars use index_daily instead of the equity daily endpoint (45.972959ms)
+✔ Tushare provider posts the daily contract over HTTPS and labels data delayed (2.11775ms)
+✔ Tushare provider aggregates daily OHLCV for week view (0.469084ms)
+✔ Tushare default query dates use the Asia Shanghai calendar day (0.370041ms)
+✔ AKShare provider requires an HTTPS AKTools gateway (0.246ms)
+✔ AKShare provider maps AKTools Chinese daily fields and keeps a test label (0.508208ms)
+✔ development provider falls back to deterministic fixture when research source fails (0.632959ms)
+✔ development registry reports configured and disabled sources without exposing credentials (0.196417ms)
+✔ quota permits requests up to limit and then rejects (22.013ms)
+✔ quota resets at Asia Shanghai natural day (0.350292ms)
+✔ quota document id hashes installation id (0.34675ms)
+✔ SQL quota maps atomic database result (2.425ms)
+✔ SQL quota rejects malformed database result (0.464416ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 391.827958

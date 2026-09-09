@@ -32,6 +32,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
     private val lineChart by lazy { LineChart(context) }
     private val barChart by lazy { BarChart(context) }
     private val pieChart by lazy { PieChart(context) }
+    private var interactionHost: ChartInteractionHost? = null
 
     private fun scheduleRender() {
         // Kuikly delivers data, type and theme separately in the same UI batch.
@@ -41,6 +42,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
 
     override fun onDetachedFromWindow() {
         removeCallbacks(renderTask)
+        interactionHost?.closeFullscreen()
         super.onDetachedFromWindow()
     }
 
@@ -73,6 +75,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         if (configuration == renderedConfiguration) return
         if (chartData.isBlank()) return
         val model = runCatching { ChartPayload.parse(JSONObject(chartData)) }.getOrNull() ?: return
+        interactionHost?.closeFullscreen()
         removeAllViews()
         val chart = when (chartType) {
             TYPE_BAR -> updateBarChart(model)
@@ -80,7 +83,9 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
             else -> updateLineChart(model)
         }
         // Chart instances survive type switches; only their validated data/configuration changes.
-        addView(chart, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        (chart.parent as? android.view.ViewGroup)?.removeView(chart)
+        interactionHost = ChartInteractionHost(context, chart, listOf(chart), darkMode)
+        addView(interactionHost, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         renderedConfiguration = configuration
     }
 
@@ -101,17 +106,18 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
     }
 
     private fun updateBarChart(model: ChartPayload): BarChart = barChart.apply {
+        setFitBars(true)
         val secondary = ChartAxisPolicy.secondarySeriesIndices(model.series.map { it.values })
         configureCartesian(this, model, secondary.isNotEmpty())
         val sets = model.series.mapIndexed { index, series ->
-            BarDataSet(series.values.mapIndexed { x, value -> BarEntry(x.toFloat(), value) }, series.name).apply {
+            BarDataSet(series.values.mapIndexed { x, value -> BarEntry(BarGroupPolicy.entryX(x, index, model.series.size), value) }, series.name).apply {
                 axisDependency = if (index in secondary) YAxis.AxisDependency.RIGHT else YAxis.AxisDependency.LEFT
                 color = SERIES_COLORS[index % SERIES_COLORS.size]
                 setDrawValues(false)
             }
         }
         data = BarData(sets).apply {
-            barWidth = if (sets.size > 1) 0.7f / sets.size else 0.55f
+            barWidth = BarGroupPolicy.barWidth(sets.size)
         }
         invalidate()
     }
@@ -206,6 +212,19 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
             Color.rgb(245, 158, 11),
             Color.rgb(147, 51, 234),
         )
+    }
+}
+
+internal object BarGroupPolicy {
+    private const val GROUP_WIDTH = 0.7f // Fraction of one category's X-axis interval.
+    private const val SINGLE_BAR_WIDTH = 0.55f
+    fun barWidth(seriesCount: Int): Float {
+        require(seriesCount > 0)
+        return if (seriesCount == 1) SINGLE_BAR_WIDTH else GROUP_WIDTH / seriesCount
+    }
+    fun entryX(category: Int, seriesIndex: Int, seriesCount: Int): Float {
+        require(seriesCount > 0 && seriesIndex in 0 until seriesCount)
+        return category + (seriesIndex - (seriesCount - 1) / 2f) * barWidth(seriesCount)
     }
 }
 

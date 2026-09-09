@@ -20,6 +20,7 @@ class SessionStoreCodecTest {
                     content = "分析附件",
                     status = MessageStatus.COMPLETE,
                     createdAtMs = 10,
+                    marketDataJson = "{\"symbol\":\"000001.SH\",\"data\":[]}",
                     attachments = listOf(
                         ChatAttachment("abcdef0123456789", "data.csv", "text/csv", 12, "/private/data.csv", "cloud://fixture/data.csv"),
                     ),

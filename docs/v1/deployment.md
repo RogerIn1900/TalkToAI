@@ -24,3 +24,16 @@ curl -fsS 'https://stockai-test-d6gd0ho1z97f0bbde.service.tcloudbase.com/talktoa
 配额表与原子函数迁移位于 `backend/database/001_talktoai_quota.sql`。迁移已在测试 PostgreSQL 执行；切换到 `ALLOW_EPHEMERAL_QUOTA=false` 前，还必须让 HTTP 云函数具备调用 `$runSQL` 的服务端身份并通过远端 1/500/501 与并发验收。
 
 行情生产接入不得使用当前三狐页面抓取：2026-09-07 实测该页面只有 HTTP 可访问，HTTPS 连接失败，且未发现公开官方 API 契约。只有取得数据授权、HTTPS Base URL、鉴权方式、字段字典、交易日历、限流与 SLA 后，才允许新增对应的 `MarketDataProvider`。
+
+## 零预算开发数据源
+
+测试函数默认只使用固定测试行情。配置 `TUSHARE_TOKEN` 后，日线、周线和月线优先读取 Tushare `daily` 未复权接口；周线和月线由后端按日线聚合。该来源属于个人开发研究用途，返回状态最多为 `DELAYED`，不得据此声明实时行情或生产可用。
+
+AKShare 只作为第二补充源。由于 AKShare 是 Python 库而不是托管 API，Node.js 函数仅在配置 `AKSHARE_HTTPS_BASE_URL` 后访问自行部署并由 HTTPS 反向代理保护的 AKTools。不得配置 HTTP 地址，也不得将 AKShare 当成唯一数据源。两个开发源都失败或请求分时数据时，后端回退到固定测试行情。
+
+| 环境变量 | 是否必需 | 用途 | 安全边界 |
+|---|---|---|---|
+| `TUSHARE_TOKEN` | 否 | 启用 Tushare 日线开发源 | 仅存 CloudBase 测试函数环境，不进入 APK、Git、健康接口或日志 |
+| `AKSHARE_HTTPS_BASE_URL` | 否 | 启用 AKTools 补充源 | 必须为 HTTPS，且 URL 不允许嵌入用户名或密码 |
+
+参考资料：[Tushare A股日线接口](https://tushare.pro/document/1?doc_id=27)、[Tushare 数据服务协议](https://tushare.pro/document/1?doc_id=405)、[AKShare 项目说明](https://github.com/akfamily/akshare/blob/main/docs/introduction.md)、[AKTools](https://github.com/akfamily/aktools)。

@@ -1,0 +1,461 @@
+event: meta
+data: {"requestId":"b0e5169d-c5fd-4e92-9650-f7339a70e8bf","quota":{"used":1,"limit":500,"resetAt":"2026-09-09T16:00:00.000Z"}}
+
+event: market
+data: {"symbol":"000001.SH","source":"TalkToAI 测试固定数据（非实时行情）","marketTime":"2026-09-04T07:00:00.000Z","fetchedAt":"2026-09-09T08:07:44.342Z","freshness":"STALE","freshnessReason":"缺少最近交易日数据","data":[{"time":"2026-09-01T15:00:00+08:00","open":10.02,"high":10.18,"low":9.96,"close":10.12,"volume":1863200},{"time":"2026-09-02T15:00:00+08:00","open":10.11,"high":10.26,"low":10.05,"close":10.21,"volume":2015600},{"time":"2026-09-03T15:00:00+08:00","open":10.2,"high":10.24,"low":10.01,"close":10.08,"volume":1748800},{"time":"2026-09-04T15:00:00+08:00","open":10.09,"high":10.35,"low":10.07,"close":10.31,"volume":2439100}],"overview":[{"symbol":"000001.SH","source":"TalkToAI 测试固定数据（非实时行情）","marketTime":"2026-09-04T07:00:00.000Z","fetchedAt":"2026-09-09T08:07:44.342Z","freshness":"STALE","freshnessReason":"缺少最近交易日数据","data":[{"time":"2026-09-01T15:00:00+08:00","open":10.02,"high":10.18,"low":9.96,"close":10.12,"volume":1863200},{"time":"2026-09-02T15:00:00+08:00","open":10.11,"high":10.26,"low":10.05,"close":10.21,"volume":2015600},{"time":"2026-09-03T15:00:00+08:00","open":10.2,"high":10.24,"low":10.01,"close":10.08,"volume":1748800},{"time":"2026-09-04T15:00:00+08:00","open":10.09,"high":10.35,"low":10.07,"close":10.31,"volume":2439100}]},{"symbol":"399001.SZ","source":"TalkToAI 测试固定数据（非实时行情）","marketTime":"2026-09-04T07:00:00.000Z","fetchedAt":"2026-09-09T08:07:44.343Z","freshness":"STALE","freshnessReason":"缺少最近交易日数据","data":[{"time":"2026-09-01T15:00:00+08:00","open":10.02,"high":10.18,"low":9.96,"close":10.12,"volume":1863200},{"time":"2026-09-02T15:00:00+08:00","open":10.11,"high":10.26,"low":10.05,"close":10.21,"volume":2015600},{"time":"2026-09-03T15:00:00+08:00","open":10.2,"high":10.24,"low":10.01,"close":10.08,"volume":1748800},{"time":"2026-09-04T15:00:00+08:00","open":10.09,"high":10.35,"low":10.07,"close":10.31,"volume":2439100}]},{"symbol":"399006.SZ","source":"TalkToAI 测试固定数据（非实时行情）","marketTime":"2026-09-04T07:00:00.000Z","fetchedAt":"2026-09-09T08:07:44.343Z","freshness":"STALE","freshnessReason":"缺少最近交易日数据","data":[{"time":"2026-09-01T15:00:00+08:00","open":10.02,"high":10.18,"low":9.96,"close":10.12,"volume":1863200},{"time":"2026-09-02T15:00:00+08:00","open":10.11,"high":10.26,"low":10.05,"close":10.21,"volume":2015600},{"time":"2026-09-03T15:00:00+08:00","open":10.2,"high":10.24,"low":10.01,"close":10.08,"volume":1748800},{"time":"2026-09-04T15:00:00+08:00","open":10.09,"high":10.35,"low":10.07,"close":10.31,"volume":2439100}]}],"unavailable":[]}
+
+event: delta
+data: {"text":"##"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"大盘历史"}
+
+event: delta
+data: {"text":"数据（非"}
+
+event: delta
+data: {"text":"实时，"}
+
+event: delta
+data: {"text":"已"}
+
+event: delta
+data: {"text":"过期）\n\n以下"}
+
+event: delta
+data: {"text":"数据"}
+
+event: delta
+data: {"text":"来源于"}
+
+event: delta
+data: {"text":" **"}
+
+event: delta
+data: {"text":"TalkTo"}
+
+event: delta
+data: {"text":"AI 测试"}
+
+event: delta
+data: {"text":"固定"}
+
+event: delta
+data: {"text":"数据（非"}
+
+event: delta
+data: {"text":"实时行情）"}
+
+event: delta
+data: {"text":"**，抓取"}
+
+event: delta
+data: {"text":"时间"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"2026-"}
+
+event: delta
+data: {"text":"09-09"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"08:07"}
+
+event: delta
+data: {"text":"，"}
+
+event: delta
+data: {"text":"标注"}
+
+event: delta
+data: {"text":"为"}
+
+event: delta
+data: {"text":" **STALE"}
+
+event: delta
+data: {"text":"（过期"}
+
+event: delta
+data: {"text":"）**，原"}
+
+event: delta
+data: {"text":"因为缺少"}
+
+event: delta
+data: {"text":"最近交易日"}
+
+event: delta
+data: {"text":"数据。"}
+
+event: delta
+data: {"text":"最新"}
+
+event: delta
+data: {"text":"交易日为"}
+
+event: delta
+data: {"text":" 2026"}
+
+event: delta
+data: {"text":"-09-"}
+
+event: delta
+data: {"text":"04。"}
+
+event: delta
+data: {"text":"\n\n### "}
+
+event: delta
+data: {"text":"指数"}
+
+event: delta
+data: {"text":"收盘"}
+
+event: delta
+data: {"text":"概"}
+
+event: delta
+data: {"text":"览（202"}
+
+event: delta
+data: {"text":"6-09"}
+
+event: delta
+data: {"text":"-04"}
+
+event: delta
+data: {"text":"）\n- **"}
+
+event: delta
+data: {"text":"上证指数 ("}
+
+event: delta
+data: {"text":"000001.SH"}
+
+event: delta
+data: {"text":")"}
+
+event: delta
+data: {"text":"**：开"}
+
+event: delta
+data: {"text":" 10"}
+
+event: delta
+data: {"text":".09"}
+
+event: delta
+data: {"text":"，"}
+
+event: delta
+data: {"text":"高 10"}
+
+event: delta
+data: {"text":".35"}
+
+event: delta
+data: {"text":"，低"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"07，收"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"10.31"}
+
+event: delta
+data: {"text":"，量"}
+
+event: delta
+data: {"text":" 243"}
+
+event: delta
+data: {"text":"910"}
+
+event: delta
+data: {"text":"0\n-"}
+
+event: delta
+data: {"text":" **深"}
+
+event: delta
+data: {"text":"证成"}
+
+event: delta
+data: {"text":"指 ("}
+
+event: delta
+data: {"text":"399001"}
+
+event: delta
+data: {"text":".SZ)"}
+
+event: delta
+data: {"text":"**：开"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"09，高"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"35，低"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"07，收"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"31，量"}
+
+event: delta
+data: {"text":" 243"}
+
+event: delta
+data: {"text":"9100\n"}
+
+event: delta
+data: {"text":"- **创业板"}
+
+event: delta
+data: {"text":"指 ("}
+
+event: delta
+data: {"text":"399006"}
+
+event: delta
+data: {"text":".SZ"}
+
+event: delta
+data: {"text":")**：开"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"09，高"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"35，低"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"07，收"}
+
+event: delta
+data: {"text":" 10."}
+
+event: delta
+data: {"text":"31，量"}
+
+event: delta
+data: {"text":" 243"}
+
+event: delta
+data: {"text":"9100\n\n"}
+
+event: delta
+data: {"text":"###"}
+
+event: delta
+data: {"text":" 近期"}
+
+event: delta
+data: {"text":"走势"}
+
+event: delta
+data: {"text":"\n- "}
+
+event: delta
+data: {"text":"09-01"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"至 09"}
+
+event: delta
+data: {"text":"-04"}
+
+event: delta
+data: {"text":" 三个"}
+
+event: delta
+data: {"text":"指数"}
+
+event: delta
+data: {"text":"数据"}
+
+event: delta
+data: {"text":"完全一致"}
+
+event: delta
+data: {"text":"（测试"}
+
+event: delta
+data: {"text":"固定数据）\n"}
+
+event: delta
+data: {"text":"- 收盘"}
+
+event: delta
+data: {"text":"："}
+
+event: delta
+data: {"text":"10"}
+
+event: delta
+data: {"text":".12"}
+
+event: delta
+data: {"text":" → 10"}
+
+event: delta
+data: {"text":".21"}
+
+event: delta
+data: {"text":" → 10"}
+
+event: delta
+data: {"text":".08"}
+
+event: delta
+data: {"text":" → 10"}
+
+event: delta
+data: {"text":".31\n"}
+
+event: delta
+data: {"text":"- 09"}
+
+event: delta
+data: {"text":"-"}
+
+event: delta
+data: {"text":"04 "}
+
+event: delta
+data: {"text":"成交量"}
+
+event: delta
+data: {"text":"明显"}
+
+event: delta
+data: {"text":"放大（243"}
+
+event: delta
+data: {"text":"."}
+
+event: delta
+data: {"text":"9万 vs"}
+
+event: delta
+data: {"text":" 前两"}
+
+event: delta
+data: {"text":"日约"}
+
+event: delta
+data: {"text":"175"}
+
+event: delta
+data: {"text":"–"}
+
+event: delta
+data: {"text":"201"}
+
+event: delta
+data: {"text":"万）\n\n"}
+
+event: delta
+data: {"text":">"}
+
+event: delta
+data: {"text":" 提示："}
+
+event: delta
+data: {"text":"上述"}
+
+event: delta
+data: {"text":"为测试"}
+
+event: delta
+data: {"text":"固定数据，"}
+
+event: delta
+data: {"text":"非真实行情"}
+
+event: delta
+data: {"text":"，且已"}
+
+event: delta
+data: {"text":"过期，"}
+
+event: delta
+data: {"text":"不能反映"}
+
+event: delta
+data: {"text":"今日"}
+
+event: delta
+data: {"text":"（"}
+
+event: delta
+data: {"text":"或"}
+
+event: delta
+data: {"text":"最近"}
+
+event: delta
+data: {"text":"交易日"}
+
+event: delta
+data: {"text":"）实际大盘"}
+
+event: delta
+data: {"text":"情况"}
+
+event: delta
+data: {"text":"。\n\n仅供"}
+
+event: delta
+data: {"text":"信息参考"}
+
+event: delta
+data: {"text":"，不构成"}
+
+event: delta
+data: {"text":"投资建议。"}
+
+event: done
+data: {"requestId":"b0e5169d-c5fd-4e92-9650-f7339a70e8bf","usage":{"completion_tokens":321,"prompt_tokens":1765,"total_tokens":2086}}

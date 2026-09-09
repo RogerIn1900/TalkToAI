@@ -87,7 +87,20 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
             return
         }
         attachmentCallback = callback
-        attachmentPicker.launch(arrayOf("image/*", "text/csv", "text/plain"))
+        android.app.AlertDialog.Builder(this)
+            .setTitle("添加附件")
+            .setItems(arrayOf("图片", "CSV / TXT 文件")) { _, selected ->
+                attachmentPicker.launch(if (selected == 0) arrayOf("image/*") else arrayOf("text/csv", "text/plain"))
+            }
+            .setNegativeButton("返回") { _, _ ->
+                attachmentCallback = null
+                callback(Result.failure(IllegalStateException("ATTACHMENT_PICK_CANCELLED")))
+            }
+            .setOnCancelListener {
+                attachmentCallback = null
+                callback(Result.failure(IllegalStateException("ATTACHMENT_PICK_CANCELLED")))
+            }
+            .show()
     }
 
     override fun onPause() {

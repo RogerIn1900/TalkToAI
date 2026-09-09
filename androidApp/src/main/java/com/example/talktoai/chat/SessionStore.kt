@@ -125,6 +125,7 @@ class SessionStore(context: Context) {
         createdAtMs = createdAtMs,
         attachmentsJson = encodeAttachments(attachments).toString(),
         citationsJson = JSONArray(citations).toString(),
+        marketDataJson = marketDataJson,
     )
 
     private fun ChatMessageEntity.toModel() = ChatMessage(
@@ -135,6 +136,7 @@ class SessionStore(context: Context) {
         createdAtMs = createdAtMs,
         attachments = decodeAttachments(attachmentsJson),
         citations = decodeCitations(citationsJson),
+        marketDataJson = marketDataJson,
     )
 
     private fun encodeAttachments(attachments: List<ChatAttachment>) = JSONArray().apply {
@@ -207,6 +209,7 @@ class SessionStore(context: Context) {
                                     }
                                 })
                                 put("citations", JSONArray(message.citations))
+                                put("marketDataJson", message.marketDataJson)
                             })
                         }
                     })
@@ -253,6 +256,7 @@ class SessionStore(context: Context) {
                                     createdAtMs = message.getLong("createdAtMs"),
                                     attachments = attachments,
                                     citations = citations,
+                                    marketDataJson = message.optString("marketDataJson"),
                                 ))
                             }
                         }

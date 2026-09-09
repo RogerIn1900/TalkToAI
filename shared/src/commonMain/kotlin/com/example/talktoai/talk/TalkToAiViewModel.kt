@@ -26,6 +26,8 @@ internal class TalkToAiViewModel(
     var online: Boolean by observable(true)
     var marketSummary: String by observable("点击下方周期加载 600000.SH 测试行情")
     var marketBars: List<MarketBarUi> by observable(emptyList())
+    var marketSnapshot: MarketSnapshotUi? by observable(null)
+    var marketLoading: Boolean by observable(false)
     var marketPeriod: String by observable("day")
     var marketSymbol: String by observable("600000.SH")
     var marketFrom: String by observable("")
@@ -35,6 +37,7 @@ internal class TalkToAiViewModel(
     var pendingMarketDate: String by observable("")
     var themeMode: String by observable("system")
     var sessions: List<SessionRowUi> by observable(emptyList())
+    var sidebarSessions: ObservableList<SessionRowUi> by observableList()
     var showSessionPanel: Boolean by observable(false)
     var showArchivedSessions: Boolean by observable(false)
     var sessionQuery: String by observable("")
@@ -49,6 +52,9 @@ internal class TalkToAiViewModel(
     var bubbleStyle: String by observable(TalkUiPolicy.BUBBLE_SOFT)
     var avatarStyle: String by observable(TalkUiPolicy.AVATAR_TEXT)
     var likedMessageIds: List<String> by observable(emptyList())
+    var dislikedMessageIds: List<String> by observable(emptyList())
+    var expandedSourceMessageIds: List<String> by observable(emptyList())
+    var visibleChartTableKeys: List<String> by observable(emptyList())
     var selectedMessageId: String by observable("")
     var selectionToolbarTop: Float by observable(0f)
     var messageChartTypes: Map<String, String> by observable(emptyMap())
@@ -57,6 +63,8 @@ internal class TalkToAiViewModel(
     var showInlineMarketCard: Boolean by observable(false)
     var inlineMarketSummary: String by observable("")
     var inlineMarketBars: List<MarketBarUi> by observable(emptyList())
+    var inlineMarketSnapshot: MarketSnapshotUi? by observable(null)
+    var inlineMarketAnchorMessageId: String by observable("")
     var messageWindowSize: Int by observable(DEFAULT_MESSAGE_WINDOW)
     var totalMessageCount: Int by observable(0)
     private var scrollRequestVersion: Int = 1
@@ -137,6 +145,8 @@ internal class TalkToAiViewModel(
             showInlineMarketCard = true
             inlineMarketSummary = "正在通过只读行情工具获取数据…"
             inlineMarketBars = emptyList()
+            inlineMarketSnapshot = null
+            inlineMarketAnchorMessageId = ""
         }
         isGenerating = true
         status = if (online) "正在生成…" else "消息已保存，正在等待网络响应…"
@@ -273,18 +283,75 @@ internal class TalkToAiViewModel(
         val index = messages.indexOfFirst { it.id == messageId }
         if (index < 0) return
         val liked = !messages[index].liked
-        messages[index] = messages[index].copy(liked = liked)
+        messages[index] = messages[index].copy(liked = liked, disliked = false)
         likedMessageIds = if (!liked) {
             likedMessageIds.filterNot { it == messageId }
         } else {
             likedMessageIds + messageId
         }
+        dislikedMessageIds = dislikedMessageIds.filterNot { it == messageId }
         bridge.toast(if (liked) "已点赞" else "已取消点赞")
     }
 
-    fun openSelection(messageId: String, selectionTop: Float, selectionHeight: Float) {
+    fun messageActionSelected(action: String, messageId: String): Boolean = when (action) {
+        "message-like" -> messageId in likedMessageIds
+        "message-dislike" -> messageId in dislikedMessageIds
+        else -> false
+    }
+
+    fun messageActionTitle(action: String, messageId: String, fallback: String): String = when (action) {
+        "message-like" -> if (messageActionSelected(action, messageId)) "已赞" else "点赞"
+        "message-dislike" -> if (messageActionSelected(action, messageId)) "已踩" else "踩"
+        else -> fallback
+    }
+
+    fun toggleDislike(messageId: String) {
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) return
+        val disliked = !messages[index].disliked
+        messages[index] = messages[index].copy(disliked = disliked, liked = false)
+        dislikedMessageIds = if (!disliked) {
+            dislikedMessageIds.filterNot { it == messageId }
+        } else {
+            dislikedMessageIds + messageId
+        }
+        likedMessageIds = likedMessageIds.filterNot { it == messageId }
+        bridge.toast(if (disliked) "已记录不满意" else "已取消反馈")
+    }
+
+    fun shareMessage(messageId: String) {
+        val message = messages.firstOrNull { it.id == messageId } ?: return
+        bridge.callJsonRpc(
+            "talk.message.share",
+            JSONObject().put("content", TalkUiPolicy.shareableContent(message.content, message.citations)),
+        ) { response ->
+            if (response?.optBoolean("ok", false) != true) status = "分享失败，请稍后重试"
+        }
+    }
+
+    fun toggleSources(messageId: String) {
+        expandedSourceMessageIds = if (messageId in expandedSourceMessageIds) {
+            expandedSourceMessageIds.filterNot { it == messageId }
+        } else {
+            expandedSourceMessageIds + messageId
+        }
+    }
+
+    fun sourcesExpanded(messageId: String): Boolean = messageId in expandedSourceMessageIds
+
+    fun toggleChartTable(chartKey: String) {
+        visibleChartTableKeys = if (chartKey in visibleChartTableKeys) {
+            visibleChartTableKeys.filterNot { it == chartKey }
+        } else {
+            visibleChartTableKeys + chartKey
+        }
+    }
+
+    fun chartTableVisible(chartKey: String): Boolean = chartKey in visibleChartTableKeys
+
+    fun openSelection(messageId: String, selectionTop: Float, selectionHeight: Float, bubbleTop: Float = 0f) {
         selectedMessageId = messageId
-        selectionToolbarTop = (selectionTop + selectionHeight + SELECTION_TOOLBAR_GAP).coerceAtLeast(0f)
+        selectionToolbarTop = TalkUiPolicy.selectionToolbarBelow(selectionTop, selectionHeight, bubbleTop)
     }
 
     fun selectMessageChartType(messageId: String, chartType: String) {
@@ -323,6 +390,7 @@ internal class TalkToAiViewModel(
     }
 
     fun openSidebar() {
+        refreshSessions()
         bridge.callJsonRpc("talk.draft.flush", null, null)
         selectedMessageId = ""
         showSessionPanel = false
@@ -348,6 +416,10 @@ internal class TalkToAiViewModel(
     fun modelNotice() {
         status = "首版测试环境仅启用腾讯混元 hy3"
         showSidebar = false
+    }
+
+    fun selectModel() {
+        bridge.callJsonRpc("talk.models.select", null, null)
     }
 
     fun marketNotice() {
@@ -413,6 +485,8 @@ internal class TalkToAiViewModel(
     fun visibleSessions(): List<SessionRowUi> = sessions.filter { it.archived == showArchivedSessions }
 
     fun openSession(sessionId: String) {
+        showSidebar = false
+        activeTab = TalkUiPolicy.TAB_CHAT
         openSession(sessionId, DEFAULT_MESSAGE_WINDOW, closePanel = true)
     }
 
@@ -490,6 +564,8 @@ internal class TalkToAiViewModel(
     }
 
     fun newSession() {
+        activeTab = TalkUiPolicy.TAB_CHAT
+        requestScrollToLatest()
         currentSessionId = ""
         renameDraft = ""
         transcript = "新会话已建立。"
@@ -505,6 +581,8 @@ internal class TalkToAiViewModel(
         showInlineMarketCard = false
         inlineMarketSummary = ""
         inlineMarketBars = emptyList()
+        inlineMarketSnapshot = null
+        inlineMarketAnchorMessageId = ""
     }
 
     fun hasEarlierMessages(): Boolean = totalMessageCount > messages.size
@@ -529,6 +607,7 @@ internal class TalkToAiViewModel(
         marketSymbol = symbol
         marketPeriod = period
         marketSummary = "行情加载中…"
+        marketLoading = true
         bridge.callJsonRpc("talk.market.bars", JSONObject().apply {
             put("symbol", symbol)
             put("period", period)
@@ -539,8 +618,10 @@ internal class TalkToAiViewModel(
         }) { response ->
             val root = parseWrappedJson(response)
             if (root == null) {
+                marketLoading = false
                 marketSummary = response?.optString("message").orEmpty().ifEmpty { "行情加载失败" }
                 marketBars = emptyList()
+                marketSnapshot = null
                 return@callJsonRpc
             }
             val data = root.optJSONArray("data") ?: JSONArray()
@@ -559,6 +640,8 @@ internal class TalkToAiViewModel(
                 }
             }
             val cacheLabel = if (root.optBoolean("clientCacheHit")) " · 本地缓存" else ""
+            marketLoading = false
+            marketSnapshot = TalkUiPolicy.marketSnapshot(root, marketBars)
             marketSummary = "${root.optString("symbol")} · ${root.optString("freshness")}$cacheLabel\n" +
                 "数据：${root.optString("marketTime")}\n来源：${root.optString("source")}"
         }
@@ -638,6 +721,7 @@ internal class TalkToAiViewModel(
         if (root == null) {
             inlineMarketSummary = "行情工具返回格式错误，AI 将明确说明数据不可用"
             inlineMarketBars = emptyList()
+            inlineMarketSnapshot = null
             return
         }
         val data = root.optJSONArray("data") ?: JSONArray()
@@ -655,6 +739,7 @@ internal class TalkToAiViewModel(
                 }
             }
         }
+        inlineMarketSnapshot = TalkUiPolicy.marketSnapshot(root, inlineMarketBars)
         inlineMarketSummary = "${root.optString("symbol")} · ${root.optString("freshness")}\n" +
             "数据：${root.optString("marketTime")}\n来源：${root.optString("source")}"
     }
@@ -690,6 +775,8 @@ internal class TalkToAiViewModel(
                             }
                         },
                         liked = message.optString("id") in likedMessageIds,
+                        disliked = message.optString("id") in dislikedMessageIds,
+                        marketDataJson = message.optString("marketDataJson"),
                     ),
                 )
             }
@@ -700,6 +787,9 @@ internal class TalkToAiViewModel(
         parsedMessages.forEachIndexed { index, message ->
             if (index >= messages.size) messages.add(message)
             else if (messages[index] != message) messages[index] = message
+        }
+        if (showInlineMarketCard && inlineMarketAnchorMessageId.isEmpty()) {
+            inlineMarketAnchorMessageId = parsedMessages.lastOrNull { it.role == "user" }?.id.orEmpty()
         }
         syncRenderedMessages()
         transcript = buildString {
@@ -761,6 +851,16 @@ internal class TalkToAiViewModel(
         }
     }
 
+    fun refreshSidebar(onComplete: () -> Unit) {
+        loadToolStatus()
+        bridge.callJsonRpc("talk.sessions.load", null) { response ->
+            val rows = parseWrappedJson(response)?.optJSONArray("sessions")
+            if (rows != null) updateSessionRows(rows)
+            bridge.toast(if (rows != null) "会话已刷新" else "刷新失败，请重试")
+            onComplete()
+        }
+    }
+
     private fun loadToolStatus() {
         bridge.callJsonRpc("talk.plugins.status", null) { response ->
             val plugins = parseWrappedJson(response)?.optJSONArray("plugins")
@@ -770,7 +870,8 @@ internal class TalkToAiViewModel(
                 for (index in 0 until plugins.length()) {
                     val item = plugins.optJSONObject(index) ?: continue
                     if (isNotEmpty()) append("\n")
-                    append("• ").append(item.optString("name")).append(" · ").append(item.optString("status"))
+                    append("• ").append(item.optString("name")).append(" · ")
+                        .append(TalkUiPolicy.pluginStatusLabel(item.optString("status")))
                     append("\n  ").append(item.optString("detail"))
                 }
             }
@@ -809,6 +910,8 @@ internal class TalkToAiViewModel(
                 )
             }
         }
+        sidebarSessions.clear()
+        sidebarSessions.addAll(sessions)
     }
 
     private fun firstSession(array: JSONArray, archived: Boolean): JSONObject? {
@@ -866,6 +969,22 @@ internal data class MarketBarUi(
     val volume: Float,
 )
 
+internal data class MarketSnapshotUi(
+    val symbol: String,
+    val freshness: String,
+    val marketTime: String,
+    val fetchedAt: String,
+    val source: String,
+    val clientCacheHit: Boolean,
+    val open: Float,
+    val high: Float,
+    val low: Float,
+    val close: Float,
+    val volume: Float,
+    val change: Float,
+    val changePercent: Float?,
+)
+
 internal data class SessionRowUi(
     val id: String,
     val title: String,
@@ -881,6 +1000,8 @@ internal data class ChatMessageUi(
     val attachmentNames: List<String>,
     val citations: List<String>,
     val liked: Boolean = false,
+    val disliked: Boolean = false,
+    val marketDataJson: String = "",
 )
 
 internal data class MarkdownBlockUi(
@@ -917,6 +1038,18 @@ internal data class ChartDataUi(
 }
 
 internal object TalkUiPolicy {
+    private const val SELECTION_GAP_DP = 12f // Clear the native selection handles below the final line.
+    fun selectionToolbarBelow(top: Float, height: Float, bubbleTop: Float): Float =
+        (bubbleTop.coerceAtLeast(0f) + top.coerceAtLeast(0f) + height.coerceAtLeast(0f) + SELECTION_GAP_DP)
+
+    // Kuikly defers out-of-range offsets. Leave 2 dp for native pixel rounding.
+    private const val SCROLL_RANGE_ROUNDING_INSET_DP = 2f
+
+    fun latestMessageOffset(contentHeight: Float, viewportHeight: Float): Float {
+        if (!contentHeight.isFinite() || !viewportHeight.isFinite() || viewportHeight <= 0f) return 0f
+        return (contentHeight - viewportHeight - SCROLL_RANGE_ROUNDING_INSET_DP).coerceAtLeast(0f)
+    }
+
     const val TAB_CHAT = "chat"
     const val TAB_MARKET = "market"
     const val BUBBLE_SOFT = "soft"
@@ -976,6 +1109,82 @@ internal object TalkUiPolicy {
         "light", "dark" -> mode
         else -> "system"
     }
+
+    fun pluginStatusLabel(status: String): String = when (status) {
+        "active" -> "可用"
+        "development_only" -> "开发数据"
+        "test_fixture" -> "测试数据"
+        "configuration_required" -> "未配置"
+        "unavailable" -> "不可用"
+        else -> "状态未知"
+    }
+
+    fun freshnessLabel(freshness: String): String = when (freshness.uppercase()) {
+        "FRESH" -> "新鲜"
+        "DELAYED" -> "延时"
+        "STALE" -> "已过期"
+        else -> "待确认"
+    }
+
+    fun marketSnapshot(root: JSONObject, bars: List<MarketBarUi>): MarketSnapshotUi? {
+        val latest = bars.lastOrNull() ?: return null
+        val previousClose = bars.dropLast(1).lastOrNull()?.close
+        val change = previousClose?.let { latest.close - it } ?: (latest.close - latest.open)
+        val percent = previousClose?.takeIf { it != 0f }?.let { change / it * 100f }
+        return MarketSnapshotUi(
+            symbol = root.optString("symbol"),
+            freshness = root.optString("freshness"),
+            marketTime = root.optString("marketTime"),
+            fetchedAt = root.optString("fetchedAt"),
+            source = root.optString("source"),
+            clientCacheHit = root.optBoolean("clientCacheHit"),
+            open = latest.open,
+            high = latest.high,
+            low = latest.low,
+            close = latest.close,
+            volume = latest.volume,
+            change = change,
+            changePercent = percent,
+        )
+    }
+
+    fun shareableContent(content: String, citations: List<String>): String = buildString {
+        append(content.trim())
+        if (citations.isNotEmpty()) {
+            append("\n\n来源：\n")
+            append(citations.joinToString("\n"))
+        }
+        append("\n\n仅供信息参考，不构成投资建议。")
+    }
+
+    fun chartTableRows(chart: ChartDataUi, limit: Int = 8): List<List<String>> {
+        if (limit <= 0) return emptyList()
+        return chart.labels.take(limit).mapIndexed { rowIndex, label ->
+            buildList {
+                add(label)
+                chart.series.forEach { series ->
+                    add(formatChartValue(series.values.getOrNull(rowIndex)))
+                }
+            }
+        }
+    }
+
+    fun formatQuote(value: Float): String = ((value * 100f).toInt() / 100f).toString()
+
+    fun formatSigned(value: Float): String = (if (value >= 0f) "+" else "") + formatQuote(value)
+
+    fun formatPercent(value: Float?): String = value?.let { formatSigned(it) + "%" } ?: "—"
+
+    fun formatVolume(value: Float): String = when {
+        value >= 100_000_000f -> formatQuote(value / 100_000_000f) + "亿"
+        value >= 10_000f -> formatQuote(value / 10_000f) + "万"
+        else -> value.toInt().toString()
+    }
+
+    fun formatTimestamp(value: String): String = value.trim()
+        .replace("T", " ")
+        .replace(Regex("\\.\\d{1,6}Z$"), " UTC")
+        .replace(Regex("Z$"), " UTC")
 
     fun normalizeInputState(state: TextInputState): TextInputState = state.coerceToTextBounds()
 
@@ -1143,6 +1352,12 @@ internal object TalkUiPolicy {
             .replace("￥", "")
             .trim()
         return normalized.toFloatOrNull()
+    }
+
+    private fun formatChartValue(value: Float?): String = when {
+        value == null -> "—"
+        value % 1f == 0f -> value.toInt().toString()
+        else -> ((value * 100f).toInt() / 100f).toString()
     }
 
     private fun stripInlineMarkdown(content: String): String = content

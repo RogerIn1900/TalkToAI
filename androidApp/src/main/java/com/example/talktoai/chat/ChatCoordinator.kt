@@ -90,7 +90,11 @@ class ChatCoordinator(
                     }
                     "error" -> fail(session, requestId, data.optString("code"), data.optString("message"), data.optBoolean("retryable", true))
                     "meta" -> emit(JSONObject().put("type", "meta").put("requestId", requestId).put("data", data))
-                    "market" -> emit(JSONObject().put("type", "market").put("requestId", requestId).put("market", data))
+                    "market" -> {
+                        session = updateAssistant(session, requestId) { it.copy(marketDataJson = data.toString()) }
+                        store.upsert(session)
+                        emit(snapshotEvent("market", session, requestId).put("market", data))
+                    }
                     "citation" -> {
                         val url = data.optString("url")
                         if (url.startsWith("https://")) {
@@ -210,6 +214,7 @@ class ChatCoordinator(
                         }
                     })
                     put("citations", JSONArray(message.citations))
+                    put("marketDataJson", message.marketDataJson)
                 })
             }
         })

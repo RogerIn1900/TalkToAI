@@ -3,16 +3,21 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createApp } from "../src/app";
 import { FixtureMarketDataProvider } from "../src/fixtures";
+import type { MarketProviderStatus } from "../src/market-data";
 import { MemoryQuotaStore } from "../src/quota";
 
 async function withServer(
   run: (baseUrl: string) => Promise<void>,
   onModelMessages: (messages: Array<{ role: string; content: unknown }>) => void = () => undefined,
+  marketProviders: MarketProviderStatus[] = [],
+  market = new FixtureMarketDataProvider(),
 ): Promise<void> {
   const uploaded = new Map<string, Buffer>();
   const app = createApp({
     quota: new MemoryQuotaStore(1),
-    market: new FixtureMarketDataProvider(),
+    market,
+    marketProvider: marketProviders.length > 0 ? "tushare+fixture" : "fixture",
+    marketProviders,
     createAiModel: () => ({
       streamText: async ({ messages }) => {
         onModelMessages(messages);
@@ -46,6 +51,22 @@ async function withServer(
   }
 }
 
+test("overview retains available indices when the first source fails", () => withServer(async (baseUrl) => {
+  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ installationId: "install_1234567890abcdef", conversationId: "overview-partial", messages: [{ role: "user", content: "今天大盘数据" }], stream: true }),
+  });
+  assert.equal(response.status, 200);
+  const text = await response.text();
+  assert.match(text, /399001\.SZ/);
+  assert.match(text, /"unavailable":\["000001.SH"\]/);
+}, () => undefined, [], new class extends FixtureMarketDataProvider {
+  override async bars(...args: Parameters<FixtureMarketDataProvider["bars"]>) {
+    if (args[0] === "000001.SH") throw new Error("fixture upstream unavailable");
+    return super.bars(...args);
+  }
+}()));
+
 test("health does not expose credentials", () => withServer(async (baseUrl) => {
   const response = await fetch(`${baseUrl}/health`);
   const text = await response.text();
@@ -53,6 +74,21 @@ test("health does not expose credentials", () => withServer(async (baseUrl) => {
   assert.equal(text.includes("CLOUDBASE"), false);
   assert.equal(JSON.parse(text).status, "ok");
 }));
+
+test("health publishes the development source catalog without credentials", () => withServer(async (baseUrl) => {
+  const response = await fetch(`${baseUrl}/health`);
+  const text = await response.text();
+  const body = JSON.parse(text);
+  assert.equal(response.status, 200);
+  assert.equal(body.capabilities.marketProvider, "tushare+fixture");
+  assert.equal(body.capabilities.marketProviders[0].status, "development_only");
+  assert.equal(text.includes("secret-token"), false);
+}, () => undefined, [{
+  id: "tushare",
+  name: "Tushare 日线",
+  status: "development_only",
+  detail: "已配置 · 延时数据 · 仅开发研究",
+}]));
 
 test("market intent streams chart data before AI and injects freshness context", () => {
   let modelMessages: Array<{ role: string; content: unknown }> = [];
@@ -71,8 +107,42 @@ test("market intent streams chart data before AI and injects freshness context",
     assert.equal(response.status, 200);
     assert.ok(text.indexOf("event: market") < text.indexOf("event: delta"));
     assert.match(text, /000001\.SH/);
+    assert.match(text, /399001\.SZ/);
+    assert.match(text, /399006\.SZ/);
+    assert.match(text, /"overview"/);
     assert.match(text, /STALE/);
     assert.equal(modelMessages.some((message) => typeof message.content === "string" && message.content.includes("MARKET_CONTEXT") && message.content.includes("STALE")), true);
+    const latestUserMessage = [...modelMessages].reverse().find((message) => message.role === "user");
+    assert.equal(typeof latestUserMessage?.content, "string");
+    assert.match(latestUserMessage?.content as string, /行情工具数据已经成功返回/);
+    assert.match(latestUserMessage?.content as string, /MARKET_CONTEXT/);
+  }, (messages) => { modelMessages = messages; });
+});
+
+test("latest market tool result overrides a stale assistant denial in long conversation context", () => {
+  let modelMessages: Array<{ role: string; content: unknown }> = [];
+  return withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        installationId: "install_long_market_123456",
+        conversationId: "conversation-long-market",
+        messages: [
+          { role: "user", content: "帮我看看行情" },
+          { role: "assistant", content: "当前没有 MARKET_CONTEXT，无法读取数据。" },
+          { role: "user", content: "今日大盘数据怎么样" },
+        ],
+        stream: true,
+      }),
+    });
+    assert.equal(response.status, 200);
+    await response.text();
+    const latestUserMessage = [...modelMessages].reverse().find((message) => message.role === "user");
+    assert.equal(typeof latestUserMessage?.content, "string");
+    assert.match(latestUserMessage?.content as string, /不得声称 MARKET_CONTEXT 缺失/);
+    assert.match(latestUserMessage?.content as string, /symbol=000001\.SH/);
+    assert.equal(modelMessages.some((message) => message.role === "assistant" && message.content === "当前没有 MARKET_CONTEXT，无法读取数据。"), true);
   }, (messages) => { modelMessages = messages; });
 });
 

@@ -15,8 +15,10 @@ flowchart LR
     GATEWAY --> PROVIDER[MarketDataProvider]
     GATEWAY --> AI[CloudBase AI]
     GATEWAY --> QUOTA[(Quota Store)]
-    PROVIDER --> FIXTURE[Fixture Provider]
-    PROVIDER -. 授权后 .-> SANHU[Sanhu HTTPS Provider]
+    PROVIDER --> TUSHARE[Tushare 日线开发源]
+    PROVIDER --> AKTOOLS[AKShare AKTools 补充源]
+    PROVIDER --> FIXTURE[固定测试数据回退]
+    PROVIDER -. 商业授权后 .-> LICENSED[授权 HTTPS 行情源]
 ```
 
 Kuikly View 不直接访问网络或持久层。ViewModel 只发出动作和维护可观察 UI 状态；Android Bridge 将动作交给 `ChatCoordinator`、`SessionStore` 与 HTTPS 客户端。历史 Host 模块已经移除，V1 仅保留 Android 原生能力桥与 CloudBase HTTPS 边界。
@@ -37,6 +39,7 @@ Kuikly View 不直接访问网络或持久层。ViewModel 只发出动作和维�
 - 使用 Asia/Shanghai 日期桶执行每日 500 次限额；测试环境当前为进程内存桶，持久化原子计数仍是上线前门槛。
 - 通过 CloudBase 云函数内的 Node SDK 调用 `cloudbase / hy3` 并代理 SSE；客户端断开时取消上游生成。凭证不进入 Android 或 Git。
 - 调用行情 Provider，归一化代码、时区、价格、成交量、来源和新鲜度。
+- 零预算开发链按 Tushare 日线、可选 AKShare AKTools HTTPS 网关、固定测试数据的顺序回退。Tushare 与 AKShare 的响应最多标为 `DELAYED`，来源文字固定带“开发研究”或“测试数据”和“非实时”；分时图继续使用固定测试数据。
 - 返回稳定 `error.code`、`requestId`；日志不记录正文、附件内容或凭证。
 
 ## 本地数据

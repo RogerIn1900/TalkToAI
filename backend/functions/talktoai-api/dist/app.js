@@ -5,7 +5,7 @@ exports.createProductionApp = createProductionApp;
 const node_crypto_1 = require("node:crypto");
 const node_http_1 = require("node:http");
 const constants_1 = require("./constants");
-const fixtures_1 = require("./fixtures");
+const market_data_1 = require("./market-data");
 const quota_1 = require("./quota");
 const validation_1 = require("./validation");
 class ApiError extends Error {
@@ -81,6 +81,7 @@ async function handleAttachmentUpload(req, res, deps, id, requestId) {
 function sse(res, event, data) {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
+const OVERVIEW_INDICES = ["000001.SH", "399001.SZ", "399006.SZ"];
 function inferMarketRequest(messages) {
     const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
     const mentionsMarket = /(大盘|行情|走势|指数|K\s*线|成交量|A\s*股)/i.test(content)
@@ -95,6 +96,7 @@ function inferMarketRequest(messages) {
     const suffix = explicit?.[2]?.toUpperCase() ?? (code?.startsWith("6") ? "SH" : "SZ");
     return {
         symbol: code ? `${code}.${suffix}` : "000001.SH",
+        overview: !code && /大盘|市场|盘面|today.*market|market.*today/i.test(content),
         period: /分时|盘中/.test(content) ? "intraday" : /月线|月K/i.test(content) ? "month" : /周线|周K/i.test(content) ? "week" : "day",
     };
 }
@@ -102,10 +104,25 @@ async function toAiMessages(messages, market, attachments = [], installationId =
     const marketContext = market
         ? `\n\n${formatMarketContext(market)}`
         : "";
+    const lastUserMessageIndex = messages.map((message) => message.role).lastIndexOf("user");
+    const groundedUserContent = lastUserMessageIndex >= 0 && market
+        ? [
+            messages[lastUserMessageIndex].content,
+            "以下只读行情工具数据已经成功返回。回答必须以它为依据，不得声称 MARKET_CONTEXT 缺失；历史消息中与该工具结果冲突的表述无效。",
+            marketContext.trim(),
+        ].join("\n\n")
+        : lastUserMessageIndex >= 0
+            ? messages[lastUserMessageIndex].content
+            : marketContext.trim();
     // CloudBase hy3 expects a single leading system message.
+    // Repeat the server-normalized market context in the latest user turn. Long conversations can contain a stale
+    // assistant denial about tool availability, while the latest tool result must remain the grounding authority.
     const output = [
         { role: "system", content: `${constants_1.SYSTEM_PROMPT}${marketContext}` },
-        ...messages.map((message) => ({ role: message.role, content: message.content })),
+        ...messages.map((message, index) => ({
+            role: message.role,
+            content: index === lastUserMessageIndex ? groundedUserContent : message.content,
+        })),
     ];
     if (attachments.length === 0)
         return output;
@@ -115,7 +132,7 @@ async function toAiMessages(messages, market, attachments = [], installationId =
     const owner = (0, node_crypto_1.createHash)("sha256").update(installationId).digest("hex");
     const expectedPath = `/talktoai/v1/${owner}/`;
     const contentBlocks = [
-        { type: "text", text: messages.at(-1)?.content ?? "请分析附件" },
+        { type: "text", text: groundedUserContent || "请分析附件" },
     ];
     let textBudget = constants_1.MAX_TEXT_ATTACHMENT_CONTEXT_BYTES;
     for (const attachment of attachments) {
@@ -162,6 +179,8 @@ function formatMarketContext(market) {
         `freshness=${market.freshness}`,
         `freshnessReason=${market.freshnessReason}`,
         ...rows,
+        ...(market.overview?.filter((item) => item.symbol !== market.symbol).map(formatMarketContext) ?? []),
+        ...(market.unavailable?.length ? [`不可用指数：${market.unavailable.join(",")}；不得补造数据。`] : []),
     ].join("\n");
 }
 async function handleChat(req, res, deps, requestId) {
@@ -170,9 +189,20 @@ async function handleChat(req, res, deps, requestId) {
         throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证", false);
     }
     const marketRequest = inferMarketRequest(input.messages);
-    const market = marketRequest
+    let market = marketRequest && !marketRequest.overview
         ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
         : undefined;
+    if (marketRequest?.overview) {
+        const additional = await Promise.allSettled(OVERVIEW_INDICES.map((symbol) => deps.market.bars(symbol, marketRequest.period, undefined, undefined, deps.now())));
+        const available = additional.flatMap((result) => result.status === "fulfilled" && result.value.data.length ? [result.value] : []);
+        if (!available.length)
+            throw new ApiError(503, "MARKET_UNAVAILABLE", "主要指数数据暂不可用，请重试；不会生成虚构行情", true);
+        market = {
+            ...available[0],
+            overview: available,
+            unavailable: additional.flatMap((result, index) => result.status === "rejected" || !result.value.data.length ? [OVERVIEW_INDICES[index]] : []),
+        };
+    }
     // Resolve and authorize attachment content before quota consumption and before SSE headers are sent.
     // Validation failures therefore remain ordinary HTTP errors and never consume an AI request.
     const modelMessages = await toAiMessages(input.messages, market, input.attachments, input.installationId, deps.downloadAttachment);
@@ -247,6 +277,7 @@ function createApp(deps) {
                         aiReady: deps.aiConfigured !== false,
                         marketReady: true,
                         marketProvider: deps.marketProvider ?? "injected",
+                        marketProviders: deps.marketProviders ?? [],
                         attachments: deps.uploadAttachment && deps.downloadAttachment ? "ready" : "configuration_required",
                     },
                     requestId,
@@ -304,6 +335,7 @@ function createCloudBaseDependencies() {
     if (accessKey)
         initOptions.accessKey = accessKey;
     const app = cloudbase.init(initOptions);
+    const marketData = (0, market_data_1.createDevelopmentMarketData)();
     // CloudBase injects a runtime credential into cloud functions. The Node SDK uses
     // that identity for AI, database and storage, so a second long-lived API key is
     // optional rather than a prerequisite in the deployed function.
@@ -314,8 +346,9 @@ function createCloudBaseDependencies() {
             : new quota_1.CloudBaseQuotaStore(app.database(), limit);
     return {
         quota,
-        market: new fixtures_1.FixtureMarketDataProvider(),
-        marketProvider: "fixture",
+        market: marketData.provider,
+        marketProvider: marketData.providerId,
+        marketProviders: marketData.providers,
         aiConfigured: true,
         uploadAttachment: (cloudPath, content) => app.uploadFile({ cloudPath, fileContent: content }),
         downloadAttachment: async (fileID) => {

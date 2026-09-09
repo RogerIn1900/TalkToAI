@@ -1,1 +1,1 @@
-638c68a19e37f6cd9bbe0baa4109c2b44be84148f7ef985451cd9fdd29cb475a  artifacts/TalkToAI-v1-debug.apk
+e980dbff73b1be7abfe1cbb2e83f59ad40bdf31d0064a2628bb7afe1893cdf88  artifacts/TalkToAI-v1-debug.apk

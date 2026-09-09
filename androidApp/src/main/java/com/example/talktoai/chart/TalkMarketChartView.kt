@@ -23,6 +23,7 @@ class TalkMarketChartView(context: Context) : FrameLayout(context), IKuiklyRende
     private var darkMode = false
     private var rendered: Pair<String, Boolean>? = null
     private val renderTask = Runnable(::render)
+    private var interactionHost: ChartInteractionHost? = null
 
     override fun setProp(propKey: String, propValue: Any): Boolean = when (propKey) {
         PROP_BARS_JSON -> { barsJson = propValue.toString(); schedule(); true }
@@ -31,7 +32,7 @@ class TalkMarketChartView(context: Context) : FrameLayout(context), IKuiklyRende
     }
 
     override fun onAttachedToWindow() { super.onAttachedToWindow(); schedule() }
-    override fun onDetachedFromWindow() { removeCallbacks(renderTask); super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() { removeCallbacks(renderTask); interactionHost?.closeFullscreen(); super.onDetachedFromWindow() }
 
     private fun schedule() { removeCallbacks(renderTask); post(renderTask) }
 
@@ -39,15 +40,19 @@ class TalkMarketChartView(context: Context) : FrameLayout(context), IKuiklyRende
         val configuration = barsJson to darkMode
         if (barsJson.isBlank() || rendered == configuration) return
         val model = runCatching { MarketChartPayload.parse(barsJson) }.getOrNull() ?: return
+        interactionHost?.closeFullscreen()
         removeAllViews()
         val container = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        container.addView(candleChart(model), LinearLayout.LayoutParams(
+        val priceChart = candleChart(model)
+        val volumeChart = volumeChart(model)
+        container.addView(priceChart, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, PRICE_PANE_WEIGHT,
         ))
-        container.addView(volumeChart(model), LinearLayout.LayoutParams(
+        container.addView(volumeChart, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, VOLUME_PANE_WEIGHT,
         ))
-        addView(container, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        interactionHost = ChartInteractionHost(context, container, listOf(priceChart, volumeChart), darkMode)
+        addView(interactionHost, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         rendered = configuration
     }
 
@@ -70,8 +75,11 @@ class TalkMarketChartView(context: Context) : FrameLayout(context), IKuiklyRende
         invalidate()
     }
 
-    private fun volumeChart(model: MarketChartPayload) = BarChart(context).apply {
+    internal fun volumeChart(model: MarketChartPayload) = BarChart(context).apply {
         configureBase(this, model, showXAxis = true)
+        // The compact volume pane cannot fit the library's default six labels.
+        axisLeft.setLabelCount(VOLUME_AXIS_LABEL_COUNT, true)
+        axisLeft.axisMinimum = 0f
         axisLeft.valueFormatter = object : ValueFormatter() {
             override fun getFormattedValue(value: Float): String = when {
                 value >= 100_000_000f -> "${(value / 100_000_000f).toInt()}亿"
@@ -129,6 +137,7 @@ class TalkMarketChartView(context: Context) : FrameLayout(context), IKuiklyRende
         private const val PROP_DARK_MODE = "darkMode"
         private const val PRICE_PANE_WEIGHT = 3f
         private const val VOLUME_PANE_WEIGHT = 1f
+        private const val VOLUME_AXIS_LABEL_COUNT = 2
         private const val VISIBLE_BAR_COUNT = 40f
         private val UP_COLOR = Color.rgb(220, 38, 38)
         private val DOWN_COLOR = Color.rgb(22, 163, 74)

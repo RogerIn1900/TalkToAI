@@ -63,6 +63,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         "talk.sessions.delete" -> mutateSession(params, callback) { c, p -> c.delete(p.requireString("sessionId")) }
         "talk.sessions.export" -> exportSession(params, callback)
         "talk.attachments.pick" -> pickAttachment(callback)
+        "talk.models.select" -> showModelPicker(callback)
         "talk.attachments.upload" -> uploadAttachment(params, callback)
         "talk.chat.start" -> startChat(params, callback)
         "talk.chat.retry" -> retryChat(params, callback)
@@ -78,6 +79,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         "talk.plugins.status" -> pluginStatus(callback)
         "talk.logs.summary" -> callbackJson(callback, diagnostics.summary())
         "talk.feedback.export" -> exportFeedback(callback)
+        "talk.message.share" -> shareMessage(params, callback)
         else -> callback?.invoke(mapOf("ok" to false, "error" to "METHOD_NOT_FOUND"))
     }
 
@@ -159,6 +161,18 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                 callback?.invoke(mapOf("ok" to false, "error" to code))
             }
         }
+    }
+
+    private fun showModelPicker(callback: KuiklyRenderCallback?) {
+        val activity = context as? KuiklyRenderActivity ?: return
+        android.app.AlertDialog.Builder(activity)
+            .setTitle("选择模型（当前环境开放 1 个）")
+            .setSingleChoiceItems(arrayOf("腾讯混元 hy3"), 0) { dialog, _ ->
+                callback?.invoke(mapOf("ok" to true, "model" to "hy3"))
+                dialog.dismiss()
+            }
+            .setNegativeButton("返回") { dialog, _ -> dialog.dismiss() }
+            .show()
     }
 
     private fun uploadAttachment(params: String?, callback: KuiklyRenderCallback?) {
@@ -265,16 +279,28 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             override fun onSuccess(json: JSONObject) {
                 val capabilities = json.optJSONObject("capabilities") ?: JSONObject()
                 val marketProvider = capabilities.optString("marketProvider", "unknown")
-                val marketStatus = when {
-                    !capabilities.optBoolean("marketReady") -> "unavailable"
-                    marketProvider == "fixture" -> "test_fixture"
-                    else -> "active"
-                }
                 val attachmentCapability = capabilities.optString("attachments", "configuration_required")
                 val plugins = JSONObject().put("plugins", org.json.JSONArray().apply {
-                    put(JSONObject().put("id", "market-data").put("name", "A股行情")
-                        .put("status", marketStatus)
-                        .put("detail", "$marketProvider · 只读"))
+                    val marketProviders = capabilities.optJSONArray("marketProviders")
+                    if (marketProviders != null && marketProviders.length() > 0) {
+                        for (index in 0 until marketProviders.length()) {
+                            val provider = marketProviders.optJSONObject(index) ?: continue
+                            put(JSONObject()
+                                .put("id", "market-data-${provider.optString("id", index.toString())}")
+                                .put("name", provider.optString("name", "A股数据源"))
+                                .put("status", provider.optString("status", "configuration_required"))
+                                .put("detail", provider.optString("detail", "开发数据源 · 只读")))
+                        }
+                    } else {
+                        val marketStatus = when {
+                            !capabilities.optBoolean("marketReady") -> "unavailable"
+                            marketProvider == "fixture" -> "test_fixture"
+                            else -> "development_only"
+                        }
+                        put(JSONObject().put("id", "market-data").put("name", "A股行情")
+                            .put("status", marketStatus)
+                            .put("detail", "$marketProvider · 只读"))
+                    }
                     put(JSONObject().put("id", "ai-chat").put("name", "腾讯云 AI")
                         .put("status", if (capabilities.optBoolean("aiReady")) "active" else "configuration_required")
                         .put("detail", if (capabilities.optBoolean("aiReady")) "流式服务可用" else "服务端凭证待配置"))
@@ -428,6 +454,26 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         val value = JSONObject(params ?: "{}").optString("content")
         (context?.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
             ?.setPrimaryClip(ClipData.newPlainText("TalkToAI", value))
+    }
+
+    private fun shareMessage(params: String?, callback: KuiklyRenderCallback?) {
+        val content = JSONObject(params ?: "{}").optString("content").trim()
+        if (content.isEmpty()) {
+            callback?.invoke(mapOf("ok" to false, "error" to "EMPTY_CONTENT"))
+            return
+        }
+        runCatching {
+            val ctx = requireNotNull(context)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, content)
+            }
+            ctx.startActivity(Intent.createChooser(shareIntent, "分享回答"))
+        }.onSuccess {
+            callback?.invoke(mapOf("ok" to true))
+        }.onFailure {
+            callback?.invoke(mapOf("ok" to false, "error" to "SHARE_FAILED"))
+        }
     }
 
     private fun showAlert(params: String?, callback: KuiklyRenderCallback?) {

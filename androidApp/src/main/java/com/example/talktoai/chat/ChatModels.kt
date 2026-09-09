@@ -20,6 +20,7 @@ data class ChatMessage(
     val createdAtMs: Long,
     val attachments: List<ChatAttachment> = emptyList(),
     val citations: List<String> = emptyList(),
+    val marketDataJson: String = "",
 )
 
 data class ChatAttachment(

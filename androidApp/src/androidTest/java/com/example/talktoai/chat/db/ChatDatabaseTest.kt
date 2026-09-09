@@ -77,11 +77,35 @@ class ChatDatabaseTest {
             createdAtMs = 1L,
             attachmentsJson = "[]",
             citationsJson = "[]",
+            marketDataJson = "{\"symbol\":\"000001.SH\",\"freshness\":\"STALE\"}",
         )))
 
         dao.markInterruptedMessagesStopped()
 
         assertEquals("stopped", dao.messages("session").single().status)
+        assertEquals("{\"symbol\":\"000001.SH\",\"freshness\":\"STALE\"}", dao.messages("session").single().marketDataJson)
+    }
+
+    @Test fun migrationAddsMarketPayloadWithoutDeletingOldMessages() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val factory = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory()
+        val helper = factory.create(androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+            .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(1) {
+                override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE chat_messages (id TEXT PRIMARY KEY, content TEXT NOT NULL)")
+                    db.execSQL("INSERT INTO chat_messages VALUES ('old', 'preserved')")
+                }
+                override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            }).build())
+        try {
+            val db = helper.writableDatabase
+            ChatDatabase.MIGRATION_1_2.migrate(db)
+            db.query("SELECT content, marketDataJson FROM chat_messages WHERE id='old'").use {
+                org.junit.Assert.assertTrue(it.moveToFirst())
+                assertEquals("preserved", it.getString(0))
+                assertEquals("", it.getString(1))
+            }
+        } finally { helper.close() }
     }
 
     private companion object {

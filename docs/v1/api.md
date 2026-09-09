@@ -12,6 +12,16 @@ Base URL 由 Android `BuildConfig` 注入，正式测试环境必须为 HTTPS。
 
 错误：JSON `{ "error": { "code", "message", "retryable", "resetAt"? }, "requestId" }`。稳定错误码：`INVALID_ARGUMENT`、`UNAUTHORIZED_INSTALLATION`、`AI_NOT_CONFIGURED`、`DAILY_QUOTA_EXCEEDED`、`UPSTREAM_TIMEOUT`、`UPSTREAM_UNAVAILABLE`、`INTERNAL_ERROR`。
 
+### 市场概览扩展（交互优化 2.3）
+
+“今天大盘数据”等未指定股票代码的大盘查询，`market` 事件额外包含 `overview: MarketEnvelope<Bar[]>[]` 和 `unavailable: string[]`。并行查询上证指数、深证成指、创业板指；某项失败不丢弃其他成功项，全部失败返回 503 `MARKET_UNAVAILABLE`。顶层保留首个成功行情包，兼容旧客户端。每张卡片分别保留来源、行情时间和新鲜度，不能用获取时间代替行情时间。
+
+Android 将整个行情包存入对应 AI 消息的 `marketDataJson`（Room v2，v1 非破坏迁移），在 AI 正文之前渲染指数卡片和折线图，不依赖模型生成 Markdown 表格；停止生成、重启或重新打开会话后仍可读取该快照。旧消息没有该字段时不补造图表。重查由“查看详情”进入行情页完成，不篡改历史回答的数据依据。
+
+市场温度只统计返回指数样本的涨跌，不是全市场上涨/下跌股票家数，也不据此给出未经定义的强弱评级。测试夹具始终标记非实时；真实行情数据源未授权或未配置时不宣称为今日行情。
+
+Tushare 已识别的三个指数使用 `index_daily`，个股使用 `daily`。指数接口需相应权限；未开通时不自动购买或回退冒充数据。[Tushare 指数日线官方文档](https://tushare.pro/document/1?doc_id=95)。
+
 ## GET /v1/market/quote?symbol=600000.SH
 
 返回标准化报价、`source`、`marketTime`、`fetchedAt`、`freshness` 和 `freshnessReason`。
@@ -26,4 +36,4 @@ Base URL 由 Android `BuildConfig` 注入，正式测试环境必须为 HTTPS。
 
 ## GET /health
 
-不访问付费或第三方上游；只返回进程、版本和 `aiReady`、`marketReady`、`marketProvider`、附件存储状态，不返回环境变量或凭证。
+不访问付费或第三方上游；返回进程、版本、`aiReady`、`marketReady`、当前 `marketProvider`、不含凭证的 `marketProviders[]` 数据源状态，以及附件存储状态。Tushare 和 AKShare 只能报告为开发数据或未配置，固定夹具报告为测试数据；接口不返回环境变量、Token 或网关凭证。

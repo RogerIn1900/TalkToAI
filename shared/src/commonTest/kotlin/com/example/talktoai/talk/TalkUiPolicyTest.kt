@@ -1,12 +1,23 @@
 package com.example.talktoai.talk
 
 import com.tencent.kuikly.core.views.TextInputState
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TalkUiPolicyTest {
+    @Test
+    fun latestMessageOffsetStaysInsideNativeRangeAndHandlesUnmeasuredContent() {
+        assertEquals(59f, TalkUiPolicy.latestMessageOffset(729f, 668f))
+        assertEquals(0f, TalkUiPolicy.latestMessageOffset(100f, 668f))
+        assertEquals(0f, TalkUiPolicy.latestMessageOffset(669f, 668f))
+        assertEquals(0f, TalkUiPolicy.latestMessageOffset(729f, 0f))
+        assertEquals(0f, TalkUiPolicy.latestMessageOffset(Float.NaN, 668f))
+        assertEquals(0f, TalkUiPolicy.latestMessageOffset(729f, Float.POSITIVE_INFINITY))
+    }
+
     @Test
     fun displayContentUsesExplicitStateFallbacks() {
         assertEquals("▋", TalkUiPolicy.displayContent("", "streaming"))
@@ -106,6 +117,14 @@ class TalkUiPolicyTest {
     }
 
     @Test
+    fun developmentMarketSourcesUseExplicitChineseStatusLabels() {
+        assertEquals("开发数据", TalkUiPolicy.pluginStatusLabel("development_only"))
+        assertEquals("测试数据", TalkUiPolicy.pluginStatusLabel("test_fixture"))
+        assertEquals("未配置", TalkUiPolicy.pluginStatusLabel("configuration_required"))
+        assertEquals("状态未知", TalkUiPolicy.pluginStatusLabel("unexpected"))
+    }
+
+    @Test
     fun inputStatePreservesValidSelectionAndCompositionAndClampsStaleOffsets() {
         val composing = TextInputState("行情", selectionStart = 2, selectionEnd = 2, compositionStart = 0, compositionEnd = 2)
         assertEquals(composing, TalkUiPolicy.normalizeInputState(composing))
@@ -126,6 +145,45 @@ class TalkUiPolicyTest {
         assertEquals("2026-09-07", TalkUiPolicy.formatIsoDate(2026, 9, 7))
         assertEquals("09-04", TalkUiPolicy.axisTimeLabel("2026-09-04T15:00:00+08:00"))
         assertEquals("09:30", TalkUiPolicy.axisTimeLabel("2026-09-04 09:30:00", preferTime = true))
+    }
+
+    @Test
+    fun marketSnapshotUsesLatestBarAndNeverInventsFreshness() {
+        val root = JSONObject().apply {
+            put("symbol", "600000.SH")
+            put("freshness", "STALE")
+            put("marketTime", "2026-09-04T15:00:00+08:00")
+            put("fetchedAt", "2026-09-08T08:30:29Z")
+            put("source", "固定测试数据（非实时行情）")
+            put("clientCacheHit", true)
+        }
+        val snapshot = TalkUiPolicy.marketSnapshot(
+            root,
+            listOf(
+                MarketBarUi("2026-09-03", 10f, 11f, 9f, 10f, 10_000f),
+                MarketBarUi("2026-09-04", 10f, 13f, 9.5f, 12f, 120_000_000f),
+            ),
+        )!!
+        assertEquals(12f, snapshot.close)
+        assertEquals(2f, snapshot.change)
+        assertEquals(20f, snapshot.changePercent)
+        assertEquals("已过期", TalkUiPolicy.freshnessLabel(snapshot.freshness))
+        assertTrue(snapshot.clientCacheHit)
+        assertTrue(snapshot.source.contains("非实时"))
+        assertEquals("1.2亿", TalkUiPolicy.formatVolume(snapshot.volume))
+        assertEquals("2026-09-08 08:30:29 UTC", TalkUiPolicy.formatTimestamp("2026-09-08T08:30:29.000Z"))
+    }
+
+    @Test
+    fun chartTableRowsStayAlignedAndShareTextIncludesSourcesAndWarning() {
+        val chart = ChartDataUi(
+            "指数", listOf("周一", "周二"), "日期", "点位",
+            listOf(ChartSeriesUi("上证", listOf(3100f, 3112.34f))),
+        )
+        assertEquals(listOf(listOf("周一", "3100"), listOf("周二", "3112.34")), TalkUiPolicy.chartTableRows(chart))
+        val shared = TalkUiPolicy.shareableContent("结论", listOf("https://example.test/source"))
+        assertTrue(shared.contains("https://example.test/source"))
+        assertTrue(shared.endsWith("仅供信息参考，不构成投资建议。"))
     }
 
     private fun message(id: String, role: String) = ChatMessageUi(

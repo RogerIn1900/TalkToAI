@@ -41,6 +41,7 @@ data class ChatMessageEntity(
     val createdAtMs: Long,
     val attachmentsJson: String,
     val citationsJson: String,
+    @androidx.room.ColumnInfo(defaultValue = "''") val marketDataJson: String = "",
 )
 
 @Dao
@@ -100,13 +101,18 @@ interface ChatDao {
 
 @Database(
     entities = [ChatSessionEntity::class, ChatMessageEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
 
     companion object {
+        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE chat_messages ADD COLUMN marketDataJson TEXT NOT NULL DEFAULT ''")
+            }
+        }
         @Volatile private var instance: ChatDatabase? = null
 
         fun get(context: Context): ChatDatabase = instance ?: synchronized(this) {
@@ -114,7 +120,7 @@ abstract class ChatDatabase : RoomDatabase() {
                 context.applicationContext,
                 ChatDatabase::class.java,
                 DATABASE_NAME,
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
         }
 
         private const val DATABASE_NAME = "talktoai-chat.db"
