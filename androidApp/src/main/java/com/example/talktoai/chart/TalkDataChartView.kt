@@ -30,6 +30,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
     private var renderedConfiguration: Triple<String, String, Boolean>? = null
     private val renderTask = Runnable { renderChart() }
     private val lineChart by lazy { LineChart(context) }
+    private val sparklineChart by lazy { LineChart(context) }
     private val barChart by lazy { BarChart(context) }
     private val pieChart by lazy { PieChart(context) }
     private var interactionHost: ChartInteractionHost? = null
@@ -78,15 +79,36 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         interactionHost?.closeFullscreen()
         removeAllViews()
         val chart = when (chartType) {
+            TYPE_SPARKLINE -> updateSparkline(model)
             TYPE_BAR -> updateBarChart(model)
             TYPE_PIE -> updatePieChart(model)
             else -> updateLineChart(model)
         }
         // Chart instances survive type switches; only their validated data/configuration changes.
         (chart.parent as? android.view.ViewGroup)?.removeView(chart)
-        interactionHost = ChartInteractionHost(context, chart, listOf(chart), darkMode)
-        addView(interactionHost, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        interactionHost = if (chartType == TYPE_SPARKLINE) null else ChartInteractionHost(context, chart, listOf(chart), darkMode)
+        addView(interactionHost ?: chart, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         renderedConfiguration = configuration
+    }
+
+    // A separate instance prevents thumbnail axis/touch settings leaking into full charts.
+    private fun updateSparkline(model: ChartPayload): LineChart = sparklineChart.apply {
+        description.isEnabled = false
+        legend.isEnabled = false
+        xAxis.isEnabled = false
+        axisLeft.isEnabled = false
+        axisRight.isEnabled = false
+        setTouchEnabled(false)
+        setViewPortOffsets(0f, 4f, 0f, 4f)
+        data = LineData(model.series.map { series ->
+            LineDataSet(series.values.mapIndexed { index, value -> Entry(index.toFloat(), value) }, series.name).apply {
+                color = SERIES_COLORS.first()
+                lineWidth = 1.5f
+                setDrawCircles(false)
+                setDrawValues(false)
+            }
+        })
+        invalidate()
     }
 
     private fun updateLineChart(model: ChartPayload): LineChart = lineChart.apply {
@@ -202,9 +224,10 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         private const val PROP_CHART_DATA = "chartData"
         private const val PROP_DARK_MODE = "darkMode"
         private const val TYPE_LINE = "line"
+        private const val TYPE_SPARKLINE = "sparkline"
         private const val TYPE_BAR = "bar"
         private const val TYPE_PIE = "pie"
-        private val ALLOWED_TYPES = setOf(TYPE_LINE, TYPE_BAR, TYPE_PIE)
+        private val ALLOWED_TYPES = setOf(TYPE_LINE, TYPE_BAR, TYPE_PIE, TYPE_SPARKLINE)
         private val SERIES_COLORS = intArrayOf(
             Color.rgb(37, 99, 235),
             Color.rgb(239, 68, 68),

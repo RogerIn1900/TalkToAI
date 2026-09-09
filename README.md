@@ -4,6 +4,16 @@ TalkToAI 是一个仅提供 A 股信息参考的 Android 测试版应用。客�
 
 ## 快速验证
 
+行情 UI 使用公开 SDK [kuikly-market-ui](https://github.com/RogerIn1900/kuikly-market-ui)，以 `market-ui/` Git 子模块锁定提交，通过 Gradle 组合构建导入。首次克隆使用 `git clone --recurse-submodules`；已有工程先执行：
+
+```bash
+git submodule update --init --recursive
+```
+
+当前依赖版本为 `0.1.0`。SDK 的快速接入、功能与实现说明见其 README；不要用浮动主分支替换已锁定版本。
+
+Android SDK 本机配置：组合构建中的 `market-ui` 是独立 Gradle 工程，不自动继承宿主的 `local.properties`。如果 Android Studio 未继承 `ANDROID_HOME`，请在宿主根目录和 `market-ui/local.properties` 中分别配置同一个有效的 `sdk.dir`。这两个文件均被 Git 忽略，不应提交本机路径。独立编译 SDK 消费者示例时，也需为其配置 SDK 路径或设置 `ANDROID_HOME`。
+
 ```bash
 cd backend/functions/talktoai-api
 npm test
