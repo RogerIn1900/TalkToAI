@@ -802,7 +802,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketOverviewCard(
                     Text { attr { text(item.name); fontSize(15f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
                     Text {
                         attr { text("查看详情 ›"); fontSize(11f); color(ThemeColors.accent) }
-                        event { click { ctx.viewModel.marketSymbol = item.snapshot.symbol; ctx.viewModel.loadMarket("day"); ctx.viewModel.selectTab(TalkUiPolicy.TAB_MARKET) } }
+                        event { click { ctx.viewModel.marketDetailVisible = true; ctx.viewModel.marketSymbol = item.snapshot.symbol; ctx.viewModel.loadMarket("day"); ctx.viewModel.selectTab(TalkUiPolicy.TAB_MARKET) } }
                     }
                 }
                 marketSnapshotHeader(item.snapshot, compact = true)
@@ -855,6 +855,29 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.inlineMarketCard(ct
 }
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ctx: TalkToAiPager) {
+    View {
+        attr { flex(1f) }
+        View {
+            attr { flexDirectionRow(); padding(10f) }
+            listOf(false to "行情看板", true to "个股查询").forEach { (detail, title) ->
+                View {
+                    attr {
+                        padding(10f); marginRight(8f); borderRadius(16f)
+                        backgroundColor(if (ctx.viewModel.marketDetailVisible == detail) ThemeColors.accent else ThemeColors.surface)
+                    }
+                    Text { attr { text(title); fontSize(13f); color(if (ctx.viewModel.marketDetailVisible == detail) ThemeColors.onAccent else ThemeColors.onSurface) } }
+                    event { click { ctx.viewModel.marketDetailVisible = detail } }
+                }
+            }
+        }
+        vif({ !ctx.viewModel.marketDetailVisible }) {
+            EditableDashboard { attr { flex(1f); darkMode(ThemeColors.isNightMode) } }
+        }
+        vif({ ctx.viewModel.marketDetailVisible }) { marketDetailContent(ctx) }
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent(ctx: TalkToAiPager) {
     View {
         attr {
             flex(1f); margin(left = 12f, right = 12f, top = 8f, bottom = 12f); padding(14f)

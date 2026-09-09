@@ -26,6 +26,7 @@ internal class TalkToAiViewModel(
     var online: Boolean by observable(true)
     var marketSummary: String by observable("点击下方周期加载 600000.SH 测试行情")
     var marketBars: List<MarketBarUi> by observable(emptyList())
+    var marketDetailVisible: Boolean by observable(false)
     var marketSnapshot: MarketSnapshotUi? by observable(null)
     var marketLoading: Boolean by observable(false)
     var marketPeriod: String by observable("day")

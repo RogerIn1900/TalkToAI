@@ -36,3 +36,19 @@ adb -s emulator-5554 shell am start -W -n com.example.talktoai/.KuiklyRenderActi
 - [HTTP 接口](docs/v1/api.md)
 - [测试环境部署](docs/v1/deployment.md)
 - [验证报告与剩余风险](docs/v1/test-report.md)
+
+## 可编辑看板（UI SDK 0.2.0）
+
+行情页通过 `market-ui` Git 子模块和 Gradle 组合构建使用独立 UI SDK。
+
+```sh
+git submodule update --init --recursive
+```
+
+为宿主和 `market-ui` 分别配置被 Git 忽略的 `local.properties`，或设置 `ANDROID_HOME`。
+
+新看板支持长按编辑、三点按钮移动与配置、四边缩放、五类展示、CSV 导入、报表快照和本地保存。内置数据明确标为模拟数据；导入和快照仅保存在本机，不发送给 AI。
+
+CSV 表头为 `label,value`，或 `label,value,timeMs`；时间为毫秒时间戳，限制 256 KB / 1000 行。配置中保存数据引用，原始数据由宿主单独持久化。
+
+设计见 [可编辑看板方案](docs/v1/editable-dashboard-sdk-design.md)，SDK 接入说明与 Skill 位于子模块的 `docs/editable-dashboard.md` 和 `skills/kuikly-dashboard/SKILL.md`。

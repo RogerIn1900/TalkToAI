@@ -1,0 +1,16 @@
+{
+  "scenario": "System document picker -> CSV import -> date filter -> report snapshot -> save",
+  "import_rows": [
+    3
+  ],
+  "report_rows": [
+    2
+  ],
+  "saved_card_types": [
+    "PIE",
+    "LINE",
+    "RANKING",
+    "TABLE"
+  ],
+  "test_data_restored": true
+}
