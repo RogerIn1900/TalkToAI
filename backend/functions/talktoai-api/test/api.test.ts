@@ -67,6 +67,23 @@ test("overview retains available indices when the first source fails", () => wit
   }
 }()));
 
+test("unavailable overview returns retryable error without consuming the model quota", () => withServer(async (baseUrl) => {
+  const request = (content: string) => fetch(`${baseUrl}/v1/chat/completions`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ installationId: "install_1234567890abcdef", conversationId: "overview-failure", messages: [{ role: "user", content }], stream: true }),
+  });
+  const unavailable = await request("今天大盘数据");
+  assert.equal(unavailable.status, 503);
+  assert.equal((await unavailable.json() as any).error.code, "MARKET_UNAVAILABLE");
+  const normal = await request("解释市盈率");
+  assert.equal(normal.status, 200);
+  assert.match(await normal.text(), /event: done/);
+}, () => undefined, [], new class extends FixtureMarketDataProvider {
+  override async bars(..._args: Parameters<FixtureMarketDataProvider["bars"]>): ReturnType<FixtureMarketDataProvider["bars"]> {
+    throw new Error("fixture upstream unavailable");
+  }
+}()));
+
 test("health does not expose credentials", () => withServer(async (baseUrl) => {
   const response = await fetch(`${baseUrl}/health`);
   const text = await response.text();

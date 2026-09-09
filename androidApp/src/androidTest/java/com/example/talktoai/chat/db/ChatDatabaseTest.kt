@@ -65,6 +65,23 @@ class ChatDatabaseTest {
     }
 
     @Test
+    fun updatingSessionDuringStreamingPreservesEarlierMessages() {
+        val session = ChatSessionEntity("stream-session", "original", false, null, 1L)
+        dao.upsertSession(session)
+        val user = ChatMessageEntity("user", session.id, 0, "user", "today market", "complete", 1L, "[]", "[]")
+        val assistant = ChatMessageEntity("assistant", session.id, 1, "assistant", "first", "streaming", 2L, "[]", "[]", "{\"freshness\":\"STALE\"}")
+        dao.upsertMessages(listOf(user, assistant))
+
+        database.runInTransaction {
+            dao.upsertSession(session.copy(title = "updated", updatedAtMs = 3L))
+            dao.upsertMessages(listOf(assistant.copy(content = "first second")))
+        }
+
+        assertEquals("updated", dao.visibleSession(session.id)?.title)
+        assertEquals(listOf(user, assistant.copy(content = "first second")), dao.messages(session.id))
+    }
+
+    @Test
     fun interruptedStreamingMessagesBecomeStopped() {
         dao.upsertSession(ChatSessionEntity("session", "恢复", false, null, 1L))
         dao.upsertMessages(listOf(ChatMessageEntity(

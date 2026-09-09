@@ -11,6 +11,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Upsert
 
 @Entity(tableName = "chat_sessions")
 data class ChatSessionEntity(
@@ -74,7 +75,9 @@ interface ChatDao {
     @Query("SELECT * FROM chat_messages WHERE sessionId = :sessionId ORDER BY position DESC LIMIT :limit")
     fun recentMessages(sessionId: String, limit: Int): List<ChatMessageEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // REPLACE deletes the parent row first and cascades to every chat message.
+    // Upsert updates the existing parent in place during incremental streaming saves.
+    @Upsert
     fun upsertSession(session: ChatSessionEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
