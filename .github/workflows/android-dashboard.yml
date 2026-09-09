@@ -23,6 +23,8 @@ jobs:
         run: ./market-ui/gradlew -p market-ui verifyReleaseVersion testDebugUnitTest assembleRelease lintRelease --no-daemon
       - name: Host validation
         run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest :androidApp:assembleDebug :androidApp:assembleDebugAndroidTest :androidApp:lintDebug --no-daemon
+      - name: Verify packaged startup and dashboard classes
+        run: ./scripts/verify-android-apk.sh androidApp/build/outputs/apk/debug/androidApp-debug.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
