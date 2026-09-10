@@ -1,6 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DeepSeekModel = void 0;
+class DeepSeekHttpError extends Error {
+    code;
+    constructor(status) {
+        super(`deepseek-http-${status}`);
+        this.name = "DeepSeekHttpError";
+        this.code = `DEEPSEEK_HTTP_${status}`;
+    }
+}
 /** Minimal OpenAI-compatible streaming adapter. The API key never enters errors or logs. */
 class DeepSeekModel {
     apiKey;
@@ -44,7 +52,7 @@ class DeepSeekModel {
         });
         if (!response.ok) {
             await response.body?.cancel();
-            throw new Error(`deepseek-http-${response.status}`);
+            throw new DeepSeekHttpError(response.status);
         }
         if (!response.body)
             throw new Error("deepseek-empty-response");

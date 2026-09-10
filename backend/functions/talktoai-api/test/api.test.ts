@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { createApp } from "../src/app";
+import { classifyUpstreamFailure, createApp, safeUpstreamCode } from "../src/app";
 import { FixtureMarketDataProvider } from "../src/fixtures";
 import type { MarketProviderStatus } from "../src/market-data";
 import { MemoryQuotaStore } from "../src/quota";
@@ -91,6 +91,29 @@ test("health does not expose credentials", () => withServer(async (baseUrl) => {
   assert.equal(text.includes("CLOUDBASE"), false);
   assert.equal(JSON.parse(text).status, "ok");
 }));
+
+test("upstream diagnostics expose only a safe code and never the provider message", () => {
+  const error = Object.assign(new Error("credential sk-do-not-expose"), { code: "MODEL_NOT_ENABLED" });
+  assert.equal(safeUpstreamCode(error), "MODEL_NOT_ENABLED");
+  assert.equal(safeUpstreamCode(new Error("credential sk-do-not-expose")), "Error");
+  assert.equal(safeUpstreamCode({ code: "unsafe code with spaces" }), "UNKNOWN");
+});
+
+test("upstream failure classification makes payment and model configuration errors non-retryable", () => {
+  assert.deepEqual(classifyUpstreamFailure({ code: "DEEPSEEK_HTTP_402" }), {
+    code: "AI_PROVIDER_PAYMENT_REQUIRED",
+    message: "DeepSeek账户余额不足，请充值后重试",
+    retryable: false,
+    upstreamCode: "DEEPSEEK_HTTP_402",
+  });
+  assert.deepEqual(classifyUpstreamFailure({ code: "AI_MODEL_NOT_SUPPORTED" }), {
+    code: "AI_MODEL_NOT_AVAILABLE",
+    message: "当前环境未启用所选模型",
+    retryable: false,
+    upstreamCode: "AI_MODEL_NOT_SUPPORTED",
+  });
+  assert.equal(classifyUpstreamFailure(new Error("timeout")).retryable, true);
+});
 
 test("chat accepts an allowlisted model and rejects unknown model ids", () => withServer(async (baseUrl) => {
   const request = (model: string) => fetch(`${baseUrl}/v1/chat/completions`, {

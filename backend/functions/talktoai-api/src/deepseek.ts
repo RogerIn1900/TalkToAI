@@ -13,6 +13,16 @@ interface DeepSeekStream {
 
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
+class DeepSeekHttpError extends Error {
+  readonly code: string;
+
+  constructor(status: number) {
+    super(`deepseek-http-${status}`);
+    this.name = "DeepSeekHttpError";
+    this.code = `DEEPSEEK_HTTP_${status}`;
+  }
+}
+
 /** Minimal OpenAI-compatible streaming adapter. The API key never enters errors or logs. */
 export class DeepSeekModel {
   constructor(
@@ -53,7 +63,7 @@ export class DeepSeekModel {
     });
     if (!response.ok) {
       await response.body?.cancel();
-      throw new Error(`deepseek-http-${response.status}`);
+      throw new DeepSeekHttpError(response.status);
     }
     if (!response.body) throw new Error("deepseek-empty-response");
 

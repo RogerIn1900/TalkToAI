@@ -18,7 +18,7 @@ test("DeepSeek adapter sends the official HTTPS streaming contract without expos
   });
 
   const result = await model.streamText({
-    model: "deepseek-v4-flash",
+    model: "deepseek-flash",
     messages: [{ role: "user", content: "测试" }],
   });
   let text = "";
@@ -28,7 +28,7 @@ test("DeepSeek adapter sends the official HTTPS streaming contract without expos
   assert.equal(requestedInit?.method, "POST");
   assert.equal(new Headers(requestedInit?.headers).get("authorization"), "Bearer test-secret");
   const payload = JSON.parse(requestedInit?.body as string);
-  assert.equal(payload.model, "deepseek-v4-flash");
+  assert.equal(payload.model, "deepseek-flash");
   assert.equal(payload.stream, true);
   assert.equal(payload.thinking.type, "disabled");
   assert.equal(text, "你好");
@@ -44,7 +44,7 @@ test("DeepSeek adapter rejects non-HTTPS endpoints and image content before send
   });
   await assert.rejects(
     model.streamText({
-      model: "deepseek-v4-flash",
+      model: "deepseek-flash",
       messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] }],
     }),
     /does-not-support-image/,
@@ -56,7 +56,7 @@ test("DeepSeek upstream errors only expose status and never response credentials
   const model = new DeepSeekModel("never-log-this", async () =>
     new Response('{"error":{"message":"credential never-log-this"}}', { status: 401 }));
   await assert.rejects(
-    model.streamText({ model: "deepseek-v4-flash", messages: [{ role: "user", content: "测试" }] }),
+    model.streamText({ model: "deepseek-flash", messages: [{ role: "user", content: "测试" }] }),
     (error: Error) => error.message === "deepseek-http-401" && !error.message.includes("never-log-this"),
   );
 });
@@ -65,7 +65,7 @@ test("DeepSeek adapter flushes a final SSE event without a trailing blank separa
   const model = new DeepSeekModel("test-secret", async () =>
     new Response('data: {"choices":[{"delta":{"content":"完整"}}]}', { status: 200 }));
   const result = await model.streamText({
-    model: "deepseek-v4-flash",
+    model: "deepseek-flash",
     messages: [{ role: "user", content: "测试" }],
   });
 

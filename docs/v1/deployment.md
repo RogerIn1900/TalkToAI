@@ -19,7 +19,7 @@ curl -fsS 'https://stockai-test-d6gd0ho1z97f0bbde.service.tcloudbase.com/talktoa
 
 测试环境通过 CloudBase Node SDK 调用 `cloudbase / hy3`、数据库和云存储，也可由同一函数通过 HTTPS 调用 DeepSeek。Android、Git 与公开接口均不保存或返回服务端密钥。`/health` 只公开已配置模型的非敏感 ID；如运行环境身份策略变化，可在测试函数环境变量中配置 `CLOUDBASE_APIKEY`，代码会优先把它作为 SDK `accessKey`，但不得写入仓库。
 
-DeepSeek 只读取测试函数环境变量 `DEEPSEEK_API_KEY`。必须在 CloudBase 控制台的函数环境变量或一次性未跟踪部署配置中设置；禁止写入 `cloudbaserc.json`、`.env`、Gradle 配置、APK、文档、测试夹具或终端历史。凭证管理页面显示的记录 ID 不是聊天接口参数，不进入运行时代码。部署后先用 `/health` 确认可用模型目录；由于真实生成会消耗模型额度，在没有费用授权时只执行 Mock 契约测试，不发起线上生成。
+DeepSeek 支持两条服务端路由：`DEEPSEEK_PROVIDER=direct` 时读取 `DEEPSEEK_API_KEY` 并把客户端逻辑模型 `deepseek-v4-flash` 映射为该账号 `/models` 返回的 `deepseek-flash`；`DEEPSEEK_PROVIDER=cloudbase` 时调用测试环境内置 `cloudbase / deepseek-v4-flash`。直连密钥必须在 CloudBase 控制台的函数环境变量或一次性未跟踪部署配置中设置；禁止写入 `cloudbaserc.json`、`.env`、Gradle 配置、APK、文档、测试夹具或终端历史。凭证管理页面显示的记录 ID 不是聊天接口参数，不进入运行时代码。
 
 当前 `ALLOW_EPHEMERAL_QUOTA=true`，每日 500 次只在单个温实例内准确，冷启动或横向扩容会重新计数。本轮曾关闭该回退并部署测试：HTTP 聊天因运行时数据库身份不足返回 500；因此已恢复可工作的内存配额，未把失败配置留在测试环境。接入持久化 SQL/NoSQL 原子计数后必须删除该变量，才可把 500 次声明为跨实例强约束。
 

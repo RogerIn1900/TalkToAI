@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.classifyUpstreamFailure = classifyUpstreamFailure;
+exports.safeUpstreamCode = safeUpstreamCode;
 exports.createApp = createApp;
 exports.createProductionApp = createProductionApp;
 const node_crypto_1 = require("node:crypto");
@@ -252,12 +254,57 @@ async function handleChat(req, res, deps, requestId) {
         }
     }
     catch (error) {
+        const failure = classifyUpstreamFailure(error);
         if (!res.destroyed) {
-            sse(res, "error", { code: "UPSTREAM_UNAVAILABLE", message: "AI服务暂时不可用", retryable: true });
+            sse(res, "error", {
+                code: failure.code,
+                message: failure.message,
+                retryable: failure.retryable,
+                upstreamCode: failure.upstreamCode,
+            });
             res.end();
         }
-        console.error(JSON.stringify({ level: "error", event: "ai_upstream_failed", requestId, errorName: error instanceof Error ? error.name : "Unknown" }));
+        console.error(JSON.stringify({ level: "error", event: "ai_upstream_failed", requestId, upstreamCode: failure.upstreamCode }));
     }
+}
+/** Maps known provider failures to actionable client errors without exposing provider response bodies. */
+function classifyUpstreamFailure(error) {
+    const upstreamCode = safeUpstreamCode(error);
+    if (upstreamCode === "DEEPSEEK_HTTP_402") {
+        return {
+            code: "AI_PROVIDER_PAYMENT_REQUIRED",
+            message: "DeepSeek账户余额不足，请充值后重试",
+            retryable: false,
+            upstreamCode,
+        };
+    }
+    if (upstreamCode === "AI_MODEL_NOT_SUPPORTED" || upstreamCode === "AI_MODEL_NOT_FOUND") {
+        return {
+            code: "AI_MODEL_NOT_AVAILABLE",
+            message: "当前环境未启用所选模型",
+            retryable: false,
+            upstreamCode,
+        };
+    }
+    return {
+        code: "UPSTREAM_UNAVAILABLE",
+        message: "AI服务暂时不可用",
+        retryable: true,
+        upstreamCode,
+    };
+}
+/** Returns only provider error identifiers; messages can contain credentials or user content. */
+function safeUpstreamCode(error) {
+    if (!error || typeof error !== "object")
+        return "UNKNOWN";
+    const value = error;
+    for (const candidate of [value.code, value.statusCode, value.status]) {
+        const normalized = String(candidate ?? "").trim();
+        if (/^[A-Za-z0-9_.:-]{1,80}$/.test(normalized))
+            return normalized;
+    }
+    const name = error instanceof Error ? error.name : String(value.name ?? "");
+    return /^[A-Za-z0-9_.:-]{1,80}$/.test(name) ? name : "UNKNOWN";
 }
 function extractHttpsUrls(text) {
     const matches = text.match(/https:\/\/[^\s)\]}>，。]+/g) ?? [];
@@ -336,6 +383,9 @@ function createCloudBaseDependencies() {
     const limit = Number.parseInt(process.env.DAILY_AI_LIMIT || `${constants_1.DEFAULT_DAILY_AI_LIMIT}`, 10);
     const accessKey = process.env.CLOUDBASE_APIKEY;
     const deepseekApiKey = process.env.DEEPSEEK_API_KEY?.trim();
+    const deepseekProvider = process.env.DEEPSEEK_PROVIDER === constants_1.DEEPSEEK_PROVIDER_CLOUDBASE
+        ? constants_1.DEEPSEEK_PROVIDER_CLOUDBASE
+        : constants_1.DEEPSEEK_PROVIDER_DIRECT;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cloudbase = require("@cloudbase/node-sdk");
     const initOptions = {
@@ -367,11 +417,16 @@ function createCloudBaseDependencies() {
                 throw new Error("attachment-download-empty");
             return Buffer.isBuffer(result.fileContent) ? result.fileContent : Buffer.from(result.fileContent);
         },
-        deepseekConfigured: Boolean(deepseekApiKey),
-        availableModels: [constants_1.DEFAULT_AI_MODEL, ...(deepseekApiKey ? [constants_1.DEEPSEEK_AI_MODEL] : [])],
+        deepseekConfigured: deepseekProvider === constants_1.DEEPSEEK_PROVIDER_CLOUDBASE || Boolean(deepseekApiKey),
+        availableModels: [
+            constants_1.DEFAULT_AI_MODEL,
+            ...(deepseekProvider === constants_1.DEEPSEEK_PROVIDER_CLOUDBASE || deepseekApiKey ? [constants_1.DEEPSEEK_AI_MODEL] : []),
+        ],
         createAiModel: () => ({
             streamText: (input) => input.model === constants_1.DEEPSEEK_AI_MODEL
-                ? new deepseek_1.DeepSeekModel(deepseekApiKey ?? "").streamText(input)
+                ? deepseekProvider === constants_1.DEEPSEEK_PROVIDER_CLOUDBASE
+                    ? app.ai().createModel(constants_1.DEFAULT_AI_PROVIDER).streamText(input)
+                    : new deepseek_1.DeepSeekModel(deepseekApiKey ?? "").streamText({ ...input, model: constants_1.DEEPSEEK_DIRECT_MODEL })
                 : app.ai().createModel(process.env.AI_PROVIDER || constants_1.DEFAULT_AI_PROVIDER)
                     .streamText({ ...input, model: process.env.AI_MODEL || constants_1.DEFAULT_AI_MODEL }),
         }),

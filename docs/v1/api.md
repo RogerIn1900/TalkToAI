@@ -10,7 +10,7 @@ Base URL 由 Android `BuildConfig` 注入，正式测试环境必须为 HTTPS。
 
 模型正文传输协议仍为 Markdown 文本，不是 JSON 或 XML。Android 端使用 KuiklyMarkdown 渲染完成态回答；满足数值要求的 Markdown 表格额外转换为结构化图表（默认折线，可切换柱状，非负单序列才允许饼图）。只有用户明确要求原始结构化数据时，模型才可返回 JSON/XML 代码块。
 
-错误：JSON `{ "error": { "code", "message", "retryable", "resetAt"? }, "requestId" }`。稳定错误码：`INVALID_ARGUMENT`、`UNAUTHORIZED_INSTALLATION`、`AI_NOT_CONFIGURED`、`AI_MODEL_NOT_CONFIGURED`、`MODEL_ATTACHMENT_UNSUPPORTED`、`DAILY_QUOTA_EXCEEDED`、`UPSTREAM_TIMEOUT`、`UPSTREAM_UNAVAILABLE`、`INTERNAL_ERROR`。
+错误：JSON `{ "error": { "code", "message", "retryable", "resetAt"? }, "requestId" }`。SSE 上游错误可额外返回仅含字母、数字和有限标点的 `upstreamCode`，用于诊断提供方状态；绝不透传上游 message、请求内容或凭证。DeepSeek HTTP 402 映射为不可重试的 `AI_PROVIDER_PAYMENT_REQUIRED`，模型未启用映射为不可重试的 `AI_MODEL_NOT_AVAILABLE`，其余临时上游错误返回可重试的 `UPSTREAM_UNAVAILABLE`。稳定错误码：`INVALID_ARGUMENT`、`UNAUTHORIZED_INSTALLATION`、`AI_NOT_CONFIGURED`、`AI_MODEL_NOT_CONFIGURED`、`MODEL_ATTACHMENT_UNSUPPORTED`、`DAILY_QUOTA_EXCEEDED`、`AI_PROVIDER_PAYMENT_REQUIRED`、`AI_MODEL_NOT_AVAILABLE`、`UPSTREAM_TIMEOUT`、`UPSTREAM_UNAVAILABLE`、`INTERNAL_ERROR`。
 
 ### 市场概览扩展（交互优化 2.3）
 
