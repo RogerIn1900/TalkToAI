@@ -9,6 +9,13 @@ import kotlin.test.assertTrue
 
 class TalkUiPolicyTest {
     @Test
+    fun derivedChartsWaitUntilAssistantStreamingIsStable() {
+        assertFalse(TalkUiPolicy.shouldRenderDerivedCharts("assistant", "streaming"))
+        assertTrue(TalkUiPolicy.shouldRenderDerivedCharts("assistant", "complete"))
+        assertFalse(TalkUiPolicy.shouldRenderDerivedCharts("user", "complete"))
+    }
+
+    @Test
     fun latestMessageOffsetStaysInsideNativeRangeAndHandlesUnmeasuredContent() {
         assertEquals(59f, TalkUiPolicy.latestMessageOffset(729f, 668f))
         assertEquals(0f, TalkUiPolicy.latestMessageOffset(100f, 668f))

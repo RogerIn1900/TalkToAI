@@ -1039,6 +1039,9 @@ internal data class ChartDataUi(
 }
 
 internal object TalkUiPolicy {
+    fun shouldRenderDerivedCharts(role: String, status: String): Boolean =
+        role != "user" && status != "streaming"
+
     private const val SELECTION_GAP_DP = 12f // Clear the native selection handles below the final line.
     fun selectionToolbarBelow(top: Float, height: Float, bubbleTop: Float): Float =
         (bubbleTop.coerceAtLeast(0f) + top.coerceAtLeast(0f) + height.coerceAtLeast(0f) + SELECTION_GAP_DP)

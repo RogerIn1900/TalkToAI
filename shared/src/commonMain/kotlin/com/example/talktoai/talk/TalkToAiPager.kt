@@ -353,7 +353,11 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
 ) {
     val isUser = message.role == "user"
     val markdownBlocks = TalkUiPolicy.markdownBlocks(message.content)
-    val charts = if (isUser) emptyList() else TalkUiPolicy.chartData(message.content)
+    // A partial Markdown table changes on every SSE delta and would rebuild the native chart.
+    // Render it once the answer is stable; the separately delivered market snapshot stays visible.
+    val charts = if (TalkUiPolicy.shouldRenderDerivedCharts(message.role, message.status)) {
+        TalkUiPolicy.chartData(message.content)
+    } else emptyList()
     var selectableBubble: ViewRef<DivView>? = null
     fun selectionChanged(top: Float, height: Float) {
         ctx.viewModel.openSelection(message.id, top, height, selectableBubble?.view?.flexNode?.layoutFrame?.y ?: 0f)

@@ -6,6 +6,15 @@ import org.junit.Test
 
 class DashboardContractsTest {
     @Test
+    fun defaultDashboardPrioritizesReadableChartsWithoutLosingGridLayout() {
+        val cards = TalkDashboardView.initial().cards
+        assertEquals(listOf(3, 3, 6), cards.map { it.rect.w })
+        assertFalse(cards[0].rect.overlaps(cards[1].rect))
+        assertFalse(cards[1].rect.overlaps(cards[2].rect))
+        DashboardPolicy.validate(TalkDashboardView.initial())
+    }
+
+    @Test
     fun csvRejectsQuotesInsidePlainFieldsAndCharactersAfterClosingQuote() {
         listOf("label,value\na\"b\",1", "label,value\n\"a\"tail,1", "label,value\na,1\"\"")
             .forEach {
