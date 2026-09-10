@@ -81,13 +81,13 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         kuiklyRenderViewDelegator.onDetach()
     }
 
-    private fun pickDashboardCsv(callback: (Result<ChatAttachment>) -> Unit) {
+    private fun pickDashboardFile(callback: (Result<ChatAttachment>) -> Unit) {
         if (attachmentCallback != null) {
             callback(Result.failure(IllegalStateException("ATTACHMENT_PICK_IN_PROGRESS")))
             return
         }
         attachmentCallback = callback
-        // Document providers disagree on CSV MIME types. Validate extension, size and schema after selection.
+        // Document providers disagree on data-file MIME types. Validate content after selection.
         attachmentPicker.launch(arrayOf("*/*"))
     }
 
@@ -138,7 +138,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalRenderView(kuiklyRenderExport)
         with(kuiklyRenderExport) {
-            renderViewExport("TalkDashboard", { context -> com.example.talktoai.dashboard.TalkDashboardView(context) { callback -> pickDashboardCsv(callback) } })
+            renderViewExport("TalkDashboard", { context -> com.example.talktoai.dashboard.TalkDashboardView(context) { callback -> pickDashboardFile(callback) } })
             renderViewExport("TalkDataChart", { context -> TalkDataChartView(context) })
             renderViewExport("TalkMarketChart", { context -> TalkMarketChartView(context) })
         }

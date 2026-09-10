@@ -35,6 +35,9 @@ class DashboardStore(context: Context) {
                         row.getString("label"),
                         row.getDouble("value"),
                         if (row.isNull("time")) null else row.getLong("time"),
+                        row.optString("id", row.getString("label")),
+                        row.optString("series", "series"),
+                        row.optString("axis", "primary"),
                     )
                 },
                 source.getString("provenance"),
@@ -75,6 +78,9 @@ class DashboardStore(context: Context) {
                                                 .put("label", row.label)
                                                 .put("value", row.value)
                                                 .put("time", row.timeMs)
+                                                .put("id", row.id)
+                                                .put("series", row.seriesId)
+                                                .put("axis", row.axisId)
                                         )
                                     }
                                 },

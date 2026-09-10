@@ -65,6 +65,8 @@ class AttachmentStore(private val context: Context) {
             "gif" -> "image/gif"
             "csv" -> "text/csv"
             "txt" -> "text/plain"
+            "json" -> "application/json"
+            "xlsx" -> XLSX_MIME_TYPE
             else -> throw IllegalArgumentException("ATTACHMENT_TYPE_UNSUPPORTED")
         }
     }
@@ -82,8 +84,10 @@ class AttachmentStore(private val context: Context) {
         private const val MAX_FILE_NAME_CHARS = 80
         private const val ID_CHARS = 24
         private const val ATTACHMENTS_DIRECTORY = "talktoai_attachments"
+        const val XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         val SUPPORTED_MIME_TYPES = setOf(
             "image/jpeg", "image/png", "image/webp", "image/gif", "text/csv", "text/plain",
+            "application/json", XLSX_MIME_TYPE,
         )
     }
 }

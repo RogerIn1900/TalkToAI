@@ -8,12 +8,29 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.talktoai.KuiklyRenderActivity
 import com.talktoai.marketui.dashboard.*
+import com.talktoai.marketui.chart.ScreenshotCardView
+import com.talktoai.marketui.showcase.ScreenshotMockData
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EditableDashboardTest {
+    @Test
+    fun fixedScreenshotCompositionShowsDefaultBarSelectionDetailInsideItsCard() {
+        ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val card = ScreenshotCardView(activity).apply {
+                    submit(ScreenshotMockData.card(2))
+                }
+                activity.setContentView(card)
+                assertTrue(card.clipChildren)
+                assertTrue(findText(card, "通信ETF华夏"))
+                assertTrue(findText(card, "新易盛  兆易创新  中际旭创"))
+            }
+        }
+    }
+
     @Test
     fun unchangedInputsReuseRendererAndChangedInputsInvalidateIt() {
         ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->
@@ -33,8 +50,10 @@ class EditableDashboardTest {
                 board.updateSources(data.toList())
                 assertEquals("Editing and equivalent catalogs must reuse renderers", 3, created)
                 board.updateSources(
-                    data.mapIndexed { i, source ->
-                        if (i == 0) source.copy(rows = listOf(Datum("changed", 1.0))) else source
+                    data.map { source ->
+                        if (source.id == TalkDashboardView.initial().cards.first().sourceId)
+                            source.copy(rows = listOf(Datum("changed", 1.0)))
+                        else source
                     }
                 )
                 assertEquals("Only changed source redraws", 4, created)
@@ -220,7 +239,7 @@ class EditableDashboardTest {
                 scenario.onActivity {
                     ready =
                         board.hasWindowFocus() &&
-                            (find(board, "dashboard-card:breadth")?.height ?: 0) > 0
+                            (find(board, "dashboard-card:capital-category")?.height ?: 0) > 0
                 }
                 if (!ready) SystemClock.sleep(50)
             }
@@ -228,7 +247,7 @@ class EditableDashboardTest {
             instrument.waitForIdleSync()
             var bounds = IntArray(4)
             scenario.onActivity {
-                val card = find(board, "dashboard-card:breadth")!!
+                val card = find(board, "dashboard-card:capital-category")!!
                 val xy = IntArray(2)
                 card.getLocationOnScreen(xy)
                 bounds = intArrayOf(xy[0], xy[1], card.width, card.height)
@@ -266,8 +285,8 @@ class EditableDashboardTest {
                     renderersBeforeDrag,
                     rendererCreations,
                 )
-                assertNotEquals(
-                    "Drag should change canonical position",
+                assertEquals(
+                    "Vertical compaction must remove the gap left by a downward drag",
                     initial.cards.first().rect,
                     board.session.document.cards.first().rect,
                 )
@@ -277,7 +296,7 @@ class EditableDashboardTest {
             }
             instrument.waitForIdleSync()
             scenario.onActivity {
-                val card = find(board, "dashboard-card:breadth")!!
+                val card = find(board, "dashboard-card:capital-category")!!
                 val xy = IntArray(2)
                 card.getLocationOnScreen(xy)
                 bounds = intArrayOf(xy[0], xy[1], card.width, card.height)
@@ -321,7 +340,10 @@ class EditableDashboardTest {
                     "用户 CSV",
                     SourceKind.IMPORT,
                     "元",
-                    DashboardCsv.parse("label,value\nA,10\nB,20"),
+                    listOf(
+                        Datum("A", 10.0, 100L, "a", "price", "left"),
+                        Datum("B", 20.0, 200L, "b", "change", "right"),
+                    ),
                     "测试导入",
                 )
             val report =
@@ -340,6 +362,13 @@ class EditableDashboardTest {
                 return it
             }
         return null
+    }
+
+    private fun findText(view: View, expected: String): Boolean {
+        if (view is android.widget.TextView && view.text.toString() == expected) return true
+        if (view is android.view.ViewGroup)
+            for (i in 0 until view.childCount) if (findText(view.getChildAt(i), expected)) return true
+        return false
     }
 
     private fun gesture(x: Float, y: Float, dx: Float, dy: Float, duration: Long) {
