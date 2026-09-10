@@ -95,8 +95,35 @@ class TalkToAiApiTest {
         assertTrue(completed.await(2, TimeUnit.SECONDS))
         val body = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
         val messages = body.getJSONArray("messages")
+        assertEquals(AiModels.DEFAULT, body.getString("model"))
         assertEquals(1, messages.length())
         assertEquals("user", messages.getJSONObject(0).getString("role"))
+    }
+
+    @Test
+    fun `stream request forwards an allowlisted DeepSeek model id`() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("event: done\ndata: {}\n\n"),
+        )
+        val completed = CountDownLatch(1)
+        TalkToAiApi(baseUrl = server.url("/").toString()).streamChat(
+            installationId = "installation-test",
+            conversationId = "conversation-test",
+            messages = listOf(ChatMessage("user", MessageRole.USER, "解释行情", MessageStatus.COMPLETE, 1L)),
+            model = AiModels.DEEPSEEK_V4_FLASH,
+            listener = object : TalkToAiApi.StreamListener {
+                override fun onEvent(event: StreamEvent) {
+                    if (event.type == "done") completed.countDown()
+                }
+
+                override fun onFailure(code: String, message: String, retryable: Boolean) = completed.countDown()
+            },
+        )
+        assertTrue(completed.await(2, TimeUnit.SECONDS))
+        val body = JSONObject(server.takeRequest(2, TimeUnit.SECONDS)!!.body.readUtf8())
+        assertEquals(AiModels.DEEPSEEK_V4_FLASH, body.getString("model"))
     }
 
     @Test

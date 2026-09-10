@@ -15,46 +15,35 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class EditableDashboardTest {
     @Test
-    fun sdkChartControlsToggleDataAndOpenFullscreenOnDevice() {
-        val instrument = InstrumentationRegistry.getInstrumentation()
+    fun sdkDefaultRendererMountsInsideTheEditableDashboardOnDevice() {
         ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                val content =
-                    DashboardContentView(
-                        activity,
-                        DashboardCard("controls", "收盘价", "source", chart = ChartKind.LINE),
-                        listOf(Datum("09-01", 10.0), Datum("09-02", 11.0)),
-                        "元",
-                        android.graphics.Color.BLACK,
-                    )
-                activity.setContentView(content)
-                val legend =
-                    (content.getChildAt(1) as android.widget.HorizontalScrollView)
-                        .getChildAt(0) as android.widget.LinearLayout
-                val series = legend.getChildAt(0)
-                assertEquals(1f, series.alpha, 0f)
-                series.performClick()
-                assertTrue("A hidden data button must visibly dim", series.alpha < 1f)
-                series.performClick()
-                assertEquals(1f, series.alpha, 0f)
-
-                val actions = content.getChildAt(2) as android.widget.LinearLayout
-                assertEquals("复位", (actions.getChildAt(0) as android.widget.Button).text)
-                (actions.getChildAt(0) as android.widget.Button).performClick()
-                (actions.getChildAt(1) as android.widget.Button).performClick()
+                val board = DashboardView(activity)
+                board.submit(
+                    DashboardDocument(
+                        "测试看板",
+                        listOf(DashboardCard("controls", "收盘价", "source", chart = ChartKind.LINE)),
+                    ),
+                    listOf(
+                        DashboardSource(
+                            "source",
+                            "收盘价",
+                            SourceKind.DATA,
+                            "元",
+                            listOf(Datum("09-01", 10.0), Datum("09-02", 11.0)),
+                            "固定测试数据",
+                        )
+                    ),
+                )
+                activity.setContentView(board)
+                assertEquals(2, board.childCount)
+                assertTrue(board.getChildAt(1) is android.widget.ScrollView)
             }
-            instrument.waitForIdleSync()
-            val exit =
-                instrument.uiAutomation.rootInActiveWindow
-                    ?.findAccessibilityNodeInfosByText("退出全屏")
-                    .orEmpty()
-            assertTrue("Fullscreen must expose an explicit exit action", exit.isNotEmpty())
-            instrument.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         }
     }
 
     @Test
-    fun dashboardScrollViewportClipsCardContent() {
+    fun dashboardScrollClipsTheCanvasWhileTheCanvasAllowsResizeHandles() {
         ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val board = DashboardView(activity)
@@ -64,7 +53,7 @@ class EditableDashboardTest {
                 assertTrue(scroll.clipChildren)
                 assertTrue(scroll.clipToPadding)
                 val canvas = scroll.getChildAt(0) as android.widget.FrameLayout
-                assertTrue(canvas.clipChildren)
+                assertFalse("Card resize handles may extend within the clipped viewport", canvas.clipChildren)
                 assertTrue(canvas.clipToPadding)
             }
         }

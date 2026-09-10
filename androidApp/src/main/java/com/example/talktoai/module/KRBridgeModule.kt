@@ -20,6 +20,7 @@ import com.example.talktoai.ThemePreferences
 import com.example.talktoai.KuiklyRenderActivity
 import com.example.talktoai.chat.ChatAttachment
 import com.example.talktoai.chat.InstallationIdentity
+import com.example.talktoai.chat.AiModels
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
@@ -132,7 +133,10 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                 }
             }
             val requestId = chatCoordinator().start(
-                json.optString("sessionId").takeIf(String::isNotBlank), json.requireString("text"), attachments,
+                json.optString("sessionId").takeIf(String::isNotBlank),
+                json.requireString("text"),
+                attachments,
+                json.optString("model", AiModels.DEFAULT),
             )
             mainHandler.post { callback?.invoke(mapOf("ok" to true, "requestId" to requestId)) }
         }.onFailure { error ->
@@ -165,10 +169,15 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     private fun showModelPicker(callback: KuiklyRenderCallback?) {
         val activity = context as? KuiklyRenderActivity ?: return
+        val models = arrayOf(AiModels.HY3, AiModels.DEEPSEEK_V4_FLASH)
+        val labels = arrayOf("腾讯混元 hy3", "DeepSeek V4 Flash")
+        val preferences = themePreferences()
         android.app.AlertDialog.Builder(activity)
-            .setTitle("选择模型（当前环境开放 1 个）")
-            .setSingleChoiceItems(arrayOf("腾讯混元 hy3"), 0) { dialog, _ ->
-                callback?.invoke(mapOf("ok" to true, "model" to "hy3"))
+            .setTitle("选择模型")
+            .setSingleChoiceItems(labels, models.indexOf(preferences.getAiModel()).coerceAtLeast(0)) { dialog, index ->
+                val model = models[index]
+                preferences.setAiModel(model)
+                callback?.invoke(mapOf("ok" to true, "model" to model))
                 dialog.dismiss()
             }
             .setNegativeButton("返回") { dialog, _ -> dialog.dismiss() }
@@ -223,7 +232,11 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     private fun retryChat(params: String?, callback: KuiklyRenderCallback?) {
         storageExecutor.execute { runCatching {
-            chatCoordinator().retry(JSONObject(params ?: "{}").requireString("sessionId"))
+            val json = JSONObject(params ?: "{}")
+            chatCoordinator().retry(
+                json.requireString("sessionId"),
+                json.optString("model", AiModels.DEFAULT),
+            )
         }.onSuccess { requestId -> mainHandler.post { callback?.invoke(mapOf("ok" to true, "requestId" to requestId)) } }
             .onFailure { mainHandler.post { callback?.invoke(mapOf("ok" to false, "error" to "RETRY_UNAVAILABLE", "message" to "没有可重试的用户消息")) } }
         }
@@ -415,6 +428,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             "mode" to preferences.get().wireName,
             "bubbleStyle" to preferences.getBubbleStyle(),
             "avatarStyle" to preferences.getAvatarStyle(),
+            "model" to preferences.getAiModel(),
             "resumeDestination" to preferences.consumeResumeDestination(),
         ))
     }

@@ -19,7 +19,12 @@ class ChatCoordinator(
     private val activeCalls = ConcurrentHashMap<String, Call>()
     private val activeSessionIds = ConcurrentHashMap<String, String>()
 
-    fun start(sessionId: String?, text: String, attachments: List<ChatAttachment> = emptyList()): String {
+    fun start(
+        sessionId: String?,
+        text: String,
+        attachments: List<ChatAttachment> = emptyList(),
+        model: String = AiModels.DEFAULT,
+    ): String {
         val trimmed = text.trim()
         require(trimmed.isNotEmpty()) { "消息不能为空" }
         val resolvedSessionId = sessionId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
@@ -40,10 +45,10 @@ class ChatCoordinator(
             updatedAtMs = now,
             messages = listOf(userMessage),
         )
-        return generate(session)
+        return generate(session, model)
     }
 
-    fun retry(sessionId: String): String {
+    fun retry(sessionId: String, model: String = AiModels.DEFAULT): String {
         val existing = store.get(sessionId) ?: throw IllegalArgumentException("session-not-found")
         val lastUser = existing.messages.indexOfLast { it.role == MessageRole.USER }
         require(lastUser >= 0) { "user-message-not-found" }
@@ -51,10 +56,11 @@ class ChatCoordinator(
             updatedAtMs = nowMs(),
             messages = existing.messages.take(lastUser + 1),
         )
-        return generate(trimmed)
+        return generate(trimmed, model)
     }
 
-    private fun generate(baseSession: ChatSession): String {
+    private fun generate(baseSession: ChatSession, model: String): String {
+        require(model in AiModels.allowed) { "model-not-supported" }
         val requestId = UUID.randomUUID().toString()
         val now = nowMs()
         val assistantMessage = ChatMessage(requestId, MessageRole.ASSISTANT, "", MessageStatus.STREAMING, now)
@@ -65,7 +71,7 @@ class ChatCoordinator(
         val currentAttachments = baseSession.messages.lastOrNull { it.role == MessageRole.USER }?.attachments.orEmpty()
         activeSessionIds[requestId] = session.id
 
-        val call = api.streamChat(installationId, session.id, session.messages, currentAttachments, object : TalkToAiApi.StreamListener {
+        val call = api.streamChat(installationId, session.id, session.messages, currentAttachments, model, object : TalkToAiApi.StreamListener {
             override fun onEvent(event: StreamEvent) {
                 val data = runCatching { JSONObject(event.data) }.getOrElse { JSONObject() }
                 when (event.type) {

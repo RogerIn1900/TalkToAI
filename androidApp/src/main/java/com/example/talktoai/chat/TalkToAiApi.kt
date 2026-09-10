@@ -35,12 +35,14 @@ class TalkToAiApi(
         conversationId: String,
         messages: List<ChatMessage>,
         attachments: List<ChatAttachment> = emptyList(),
+        model: String = AiModels.DEFAULT,
         listener: StreamListener,
     ): Call {
         val payload = JSONObject().apply {
             put("installationId", installationId)
             put("conversationId", conversationId)
             put("stream", true)
+            put("model", model.takeIf(AiModels.allowed::contains) ?: AiModels.DEFAULT)
             put("messages", JSONArray().apply {
                 messages.filter(::isSendableMessage).forEach { message ->
                     put(JSONObject().apply {

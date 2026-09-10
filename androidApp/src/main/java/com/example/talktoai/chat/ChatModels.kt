@@ -1,5 +1,12 @@
 package com.example.talktoai.chat
 
+object AiModels {
+    const val HY3 = "hy3"
+    const val DEEPSEEK_V4_FLASH = "deepseek-v4-flash"
+    const val DEFAULT = HY3
+    val allowed = setOf(HY3, DEEPSEEK_V4_FLASH)
+}
+
 enum class MessageRole(val wireName: String) {
     USER("user"),
     ASSISTANT("assistant"),

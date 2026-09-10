@@ -52,6 +52,7 @@ internal class TalkToAiViewModel(
     var showSidebar: Boolean by observable(false)
     var bubbleStyle: String by observable(TalkUiPolicy.BUBBLE_SOFT)
     var avatarStyle: String by observable(TalkUiPolicy.AVATAR_TEXT)
+    var selectedModel: String by observable(TalkUiPolicy.MODEL_HY3)
     var likedMessageIds: List<String> by observable(emptyList())
     var dislikedMessageIds: List<String> by observable(emptyList())
     var expandedSourceMessageIds: List<String> by observable(emptyList())
@@ -103,6 +104,7 @@ internal class TalkToAiViewModel(
                 themeMode = TalkUiPolicy.normalizeTheme(response.optString("mode", "system"))
                 bubbleStyle = TalkUiPolicy.normalizeBubbleStyle(response.optString("bubbleStyle"))
                 avatarStyle = TalkUiPolicy.normalizeAvatarStyle(response.optString("avatarStyle"))
+                selectedModel = TalkUiPolicy.normalizeModel(response.optString("model"))
                 if (response.optString("resumeDestination") == TalkUiPolicy.SETTINGS_APPEARANCE) {
                     settingsSection = TalkUiPolicy.SETTINGS_APPEARANCE
                     showSidebar = false
@@ -155,6 +157,7 @@ internal class TalkToAiViewModel(
         bridge.callJsonRpc("talk.chat.start", JSONObject().apply {
             put("sessionId", currentSessionId)
             put("text", text)
+            put("model", selectedModel)
             put("attachments", JSONArray().apply {
                 pendingAttachments.forEach { attachment ->
                     put(JSONObject().apply {
@@ -247,7 +250,10 @@ internal class TalkToAiViewModel(
         if (currentSessionId.isEmpty() || isGenerating) return
         isGenerating = true
         status = "正在重试…"
-        bridge.callJsonRpc("talk.chat.retry", JSONObject().put("sessionId", currentSessionId)) { response ->
+        bridge.callJsonRpc(
+            "talk.chat.retry",
+            JSONObject().put("sessionId", currentSessionId).put("model", selectedModel),
+        ) { response ->
             if (response?.optBoolean("ok", false) == true) {
                 activeRequestId = response.optString("requestId")
             } else {
@@ -415,12 +421,17 @@ internal class TalkToAiViewModel(
     }
 
     fun modelNotice() {
-        status = "首版测试环境仅启用腾讯混元 hy3"
+        status = "当前模型：${TalkUiPolicy.modelLabel(selectedModel)}"
         showSidebar = false
     }
 
     fun selectModel() {
-        bridge.callJsonRpc("talk.models.select", null, null)
+        bridge.callJsonRpc("talk.models.select", null) { response ->
+            if (response?.optBoolean("ok", false) == true) {
+                selectedModel = TalkUiPolicy.normalizeModel(response.optString("model"))
+                status = "已切换到${TalkUiPolicy.modelLabel(selectedModel)}"
+            }
+        }
     }
 
     fun marketNotice() {
@@ -1039,6 +1050,15 @@ internal data class ChartDataUi(
 }
 
 internal object TalkUiPolicy {
+    const val MODEL_HY3 = "hy3"
+    const val MODEL_DEEPSEEK = "deepseek-v4-flash"
+
+    fun normalizeModel(value: String): String =
+        if (value == MODEL_DEEPSEEK) MODEL_DEEPSEEK else MODEL_HY3
+
+    fun modelLabel(value: String): String =
+        if (normalizeModel(value) == MODEL_DEEPSEEK) "DeepSeek V4 Flash" else "腾讯混元 hy3"
+
     fun shouldRenderDerivedCharts(role: String, status: String): Boolean =
         role != "user" && status != "streaming"
 

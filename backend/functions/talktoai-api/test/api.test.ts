@@ -92,6 +92,108 @@ test("health does not expose credentials", () => withServer(async (baseUrl) => {
   assert.equal(JSON.parse(text).status, "ok");
 }));
 
+test("chat accepts an allowlisted model and rejects unknown model ids", () => withServer(async (baseUrl) => {
+  const request = (model: string) => fetch(`${baseUrl}/v1/chat/completions`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      installationId: "install_model_123456789",
+      conversationId: "model-selection",
+      model,
+      messages: [{ role: "user", content: "解释市盈率" }],
+      stream: true,
+    }),
+  });
+  assert.equal((await request("deepseek-v4-flash")).status, 200);
+  const rejected = await request("untrusted-model");
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json() as any).error.code, "INVALID_ARGUMENT");
+}));
+
+test("unconfigured DeepSeek fails before consuming quota", async () => {
+  let consumeCount = 0;
+  const app = createApp({
+    quota: {
+      consume: async () => {
+        consumeCount += 1;
+        return { allowed: true, used: 1, limit: 500, resetAt: "2026-09-05T16:00:00.000Z" };
+      },
+    },
+    market: new FixtureMarketDataProvider(),
+    deepseekConfigured: false,
+    createAiModel: () => { throw new Error("must not be called"); },
+    now: () => new Date("2026-09-05T01:00:00Z"),
+  });
+  app.listen(0, "127.0.0.1");
+  await once(app, "listening");
+  const address = app.address();
+  assert.ok(address && typeof address !== "string");
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        installationId: "install_model_123456789",
+        conversationId: "deepseek-not-configured",
+        model: "deepseek-v4-flash",
+        messages: [{ role: "user", content: "测试" }],
+        stream: true,
+      }),
+    });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json() as any).error.code, "AI_MODEL_NOT_CONFIGURED");
+    assert.equal(consumeCount, 0);
+  } finally {
+    app.close();
+    await once(app, "close");
+  }
+});
+
+test("DeepSeek image attachment is rejected before quota consumption", async () => {
+  let consumeCount = 0;
+  const app = createApp({
+    quota: {
+      consume: async () => {
+        consumeCount += 1;
+        return { allowed: true, used: 1, limit: 500, resetAt: "2026-09-05T16:00:00.000Z" };
+      },
+    },
+    market: new FixtureMarketDataProvider(),
+    deepseekConfigured: true,
+    createAiModel: () => { throw new Error("must not be called"); },
+    now: () => new Date("2026-09-05T01:00:00Z"),
+  });
+  app.listen(0, "127.0.0.1");
+  await once(app, "listening");
+  const address = app.address();
+  assert.ok(address && typeof address !== "string");
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        installationId: "install_model_123456789",
+        conversationId: "deepseek-image",
+        model: "deepseek-v4-flash",
+        messages: [{ role: "user", content: "分析图片" }],
+        attachments: [{
+          id: "abcdef0123456789",
+          name: "chart.png",
+          mimeType: "image/png",
+          sizeBytes: 2,
+          objectRef: "cloud://talktoai/v1/install_model_123456789/abcdef0123456789/chart.png",
+        }],
+        stream: true,
+      }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as any).error.code, "MODEL_ATTACHMENT_UNSUPPORTED");
+    assert.equal(consumeCount, 0);
+  } finally {
+    app.close();
+    await once(app, "close");
+  }
+});
+
 test("health publishes the development source catalog without credentials", () => withServer(async (baseUrl) => {
   const response = await fetch(`${baseUrl}/health`);
   const text = await response.text();

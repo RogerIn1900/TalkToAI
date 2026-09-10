@@ -6,6 +6,8 @@ import {
   MAX_MESSAGE_CHARS,
   MAX_MESSAGES,
   MAX_TEXT_ATTACHMENT_BYTES,
+  DEFAULT_AI_MODEL,
+  SUPPORTED_AI_MODELS,
   SYMBOL_PATTERN,
 } from "./constants";
 import type { ChatRequest, Period } from "./types";
@@ -28,6 +30,10 @@ export function parseChatRequest(input: unknown): ChatRequest {
   }
   if (!value.conversationId || value.conversationId.length > 128) {
     throw new RequestValidationError("conversationId格式无效");
+  }
+  const model = value.model ?? DEFAULT_AI_MODEL;
+  if (typeof model !== "string" || !SUPPORTED_AI_MODELS.has(model)) {
+    throw new RequestValidationError("model不受支持");
   }
   if (!Array.isArray(value.messages) || value.messages.length < 1 || value.messages.length > MAX_MESSAGES) {
     throw new RequestValidationError(`messages数量必须为1至${MAX_MESSAGES}`);
@@ -57,7 +63,7 @@ export function parseChatRequest(input: unknown): ChatRequest {
       throw new RequestValidationError("附件元数据无效或类型不受支持");
     }
   }
-  return value as ChatRequest;
+  return { ...value, model } as ChatRequest;
 }
 
 export function parseSymbol(value: string | null): string {

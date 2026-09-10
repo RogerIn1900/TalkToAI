@@ -23,7 +23,7 @@
 
 ## 外部边界
 
-- AI：CloudBase HTTP AI 接口，模型配置由测试后端环境变量提供，客户端不得持有服务端 API Key。
+- AI：CloudBase HTTPS 测试后端代理腾讯混元 `hy3` 与 DeepSeek `deepseek-v4-flash`；模型凭证只存测试函数环境变量，客户端不得持有服务端 API Key。DeepSeek V1 接入为文本模型，不接受图片附件。
 - 行情：零预算开发期使用 Tushare 日线、可选 AKShare AKTools HTTPS 补充源与固定夹具回退；界面和 AI 上下文必须标明“开发研究/测试数据”“延时或过期”“非实时”。生产接入必须另行取得可验证的数据使用和客户端展示授权。
 - 所有客户端远程访问均为 HTTPS；外部提供方由 CloudBase 后端代理和归一化。
 

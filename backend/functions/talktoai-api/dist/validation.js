@@ -25,6 +25,10 @@ function parseChatRequest(input) {
     if (!value.conversationId || value.conversationId.length > 128) {
         throw new RequestValidationError("conversationId格式无效");
     }
+    const model = value.model ?? constants_1.DEFAULT_AI_MODEL;
+    if (typeof model !== "string" || !constants_1.SUPPORTED_AI_MODELS.has(model)) {
+        throw new RequestValidationError("model不受支持");
+    }
     if (!Array.isArray(value.messages) || value.messages.length < 1 || value.messages.length > constants_1.MAX_MESSAGES) {
         throw new RequestValidationError(`messages数量必须为1至${constants_1.MAX_MESSAGES}`);
     }
@@ -52,7 +56,7 @@ function parseChatRequest(input) {
             throw new RequestValidationError("附件元数据无效或类型不受支持");
         }
     }
-    return value;
+    return { ...value, model };
 }
 function parseSymbol(value) {
     const symbol = (value ?? "").toUpperCase();

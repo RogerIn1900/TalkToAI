@@ -103,7 +103,7 @@ internal class TalkToAiPager : BasePager() {
                     }
                     Text {
                         attr {
-                            text("A股 · hy3 · 只读")
+                            text("A股 · ${TalkUiPolicy.modelLabel(ctx.viewModel.selectedModel)} · 只读")
                             fontSize(12f)
                             color(ThemeColors.onSurfaceVariant)
                         }
@@ -189,7 +189,7 @@ internal class TalkToAiPager : BasePager() {
                 vif({ ctx.viewModel.activeTab == TalkUiPolicy.TAB_CHAT }) {
                     View {
                         attr { height(30f); alignItemsCenter(); justifyContentCenter() }
-                        Text { attr { text("当前模型：腾讯混元 hy3 ▾"); fontSize(12f); color(ThemeColors.onSurfaceVariant) } }
+                        Text { attr { text("当前模型：${TalkUiPolicy.modelLabel(ctx.viewModel.selectedModel)} ▾"); fontSize(12f); color(ThemeColors.onSurfaceVariant) } }
                         event { click { ctx.inputRef.view?.blur(); ctx.viewModel.selectModel() } }
                     }
                 }
@@ -377,7 +377,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
             if (!isUser) {
                 Text {
                     attr {
-                        text("TalkToAI · hy3")
+                        text("TalkToAI · ${TalkUiPolicy.modelLabel(ctx.viewModel.selectedModel)}")
                         margin(left = 4f, bottom = 5f); fontSize(10f); color(ThemeColors.onSurfaceVariant)
                     }
                 }
@@ -1331,7 +1331,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.settingsPanel(ctx: 
             }
         }
         if (ctx.viewModel.settingsSection == TalkUiPolicy.SETTINGS_AI) {
-            settingsCard("模型", "腾讯混元 hy3\n首版唯一模型，由 CloudBase 测试环境代理，密钥不进入 APK。")
+            settingsCard("模型", "${TalkUiPolicy.modelLabel(ctx.viewModel.selectedModel)}\n腾讯混元与 DeepSeek 均由测试后端代理，密钥不进入 APK。")
             settingsCard("工具", "A 股行情查询（只读）\n行情问题会先调用 MarketDataProvider，再把带来源、时间和新鲜度的数据交给 AI。")
             settingsCard("回答格式", "客户端隐藏 Markdown 标记；数值表格自动转换为图表，默认折线并可切换柱状或饼状。")
             Button {

@@ -9,6 +9,7 @@ export interface ChatMessage {
 export interface ChatRequest {
   installationId: string;
   conversationId: string;
+  model: string;
   messages: ChatMessage[];
   attachments?: AttachmentRef[];
   stream: true;

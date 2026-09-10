@@ -13,7 +13,9 @@ flowchart LR
     SESSION --> ROOM[(Room sessions/messages)]
     API --> GATEWAY[CloudBase Gateway]
     GATEWAY --> PROVIDER[MarketDataProvider]
-    GATEWAY --> AI[CloudBase AI]
+    GATEWAY --> ROUTER[AI Model Router]
+    ROUTER --> HY3[CloudBase AI / hy3]
+    ROUTER --> DEEPSEEK[DeepSeek HTTPS API]
     GATEWAY --> QUOTA[(Quota Store)]
     PROVIDER --> TUSHARE[Tushare 日线开发源]
     PROVIDER --> AKTOOLS[AKShare AKTools 补充源]
@@ -37,7 +39,8 @@ Kuikly View 不直接访问网络或持久层。ViewModel 只发出动作和维�
 
 - 验证请求大小、附件元数据和匿名安装标识。
 - 使用 Asia/Shanghai 日期桶执行每日 500 次限额；测试环境当前为进程内存桶，持久化原子计数仍是上线前门槛。
-- 通过 CloudBase 云函数内的 Node SDK 调用 `cloudbase / hy3` 并代理 SSE；客户端断开时取消上游生成。凭证不进入 Android 或 Git。
+- 对请求中的模型 ID执行服务端白名单校验：`hy3` 通过 CloudBase Node SDK，`deepseek-v4-flash` 通过最小 OpenAI 兼容 HTTPS 适配器；两者统一代理为现有 SSE 协议。DeepSeek API Key 只从测试函数环境读取，不进入 Android、Git、错误正文或健康接口。
+- DeepSeek V1 是文本模型。图片附件在读取对象和扣除日配额之前返回 `MODEL_ATTACHMENT_UNSUPPORTED`；CSV/TXT 仍按既有受控文本上下文处理。
 - 调用行情 Provider，归一化代码、时区、价格、成交量、来源和新鲜度。
 - 零预算开发链按 Tushare 日线、可选 AKShare AKTools HTTPS 网关、固定测试数据的顺序回退。Tushare 与 AKShare 的响应最多标为 `DELAYED`，来源文字固定带“开发研究”或“测试数据”和“非实时”；分时图继续使用固定测试数据。
 - 返回稳定 `error.code`、`requestId`；日志不记录正文、附件内容或凭证。

@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import {
   DEFAULT_AI_MODEL,
   DEFAULT_AI_PROVIDER,
+  DEEPSEEK_AI_MODEL,
   DEFAULT_DAILY_AI_LIMIT,
   ATTACHMENT_ID_PATTERN,
   MAX_IMAGE_ATTACHMENT_BYTES,
@@ -11,6 +12,7 @@ import {
   MAX_TEXT_ATTACHMENT_CONTEXT_BYTES,
   SYSTEM_PROMPT,
 } from "./constants";
+import { DeepSeekModel } from "./deepseek";
 import { createDevelopmentMarketData, type MarketProviderStatus } from "./market-data";
 import { CloudBaseQuotaStore, CloudBaseSqlQuotaStore, MemoryQuotaStore } from "./quota";
 import type { AttachmentRef, Bar, ChatMessage, MarketDataProvider, MarketEnvelope, Period, QuotaStore } from "./types";
@@ -36,6 +38,8 @@ interface AppDependencies {
   createAiModel: () => AiModel;
   now: () => Date;
   aiConfigured?: boolean;
+  deepseekConfigured?: boolean;
+  availableModels?: string[];
   marketProvider?: string;
   marketProviders?: MarketProviderStatus[];
   uploadAttachment?: (cloudPath: string, content: Buffer) => Promise<{ fileID: string }>;
@@ -240,6 +244,15 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, deps: AppDe
   if (deps.aiConfigured === false) {
     throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证", false);
   }
+  if (input.model === DEEPSEEK_AI_MODEL && deps.deepseekConfigured === false) {
+    throw new ApiError(503, "AI_MODEL_NOT_CONFIGURED", "DeepSeek测试模型尚未配置", false);
+  }
+  if (
+    input.model === DEEPSEEK_AI_MODEL &&
+    input.attachments?.some((attachment) => attachment.mimeType.startsWith("image/"))
+  ) {
+    throw new ApiError(400, "MODEL_ATTACHMENT_UNSUPPORTED", "DeepSeek文本模型暂不支持图片附件", false);
+  }
   const marketRequest = inferMarketRequest(input.messages);
   let market: MarketResult | undefined = marketRequest && !marketRequest.overview
     ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
@@ -281,7 +294,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, deps: AppDe
       sse(res, "citation", { kind: "attachment", attachmentId: attachment.id, title: attachment.name });
     }
     const result = await deps.createAiModel().streamText({
-      model: process.env.AI_MODEL || DEFAULT_AI_MODEL,
+      model: input.model,
       messages: modelMessages,
     });
     let fullText = "";
@@ -332,6 +345,7 @@ export function createApp(deps: AppDependencies) {
           version: "1.0.0",
           capabilities: {
             aiReady: deps.aiConfigured !== false,
+            models: deps.availableModels ?? [DEFAULT_AI_MODEL],
             marketReady: true,
             marketProvider: deps.marketProvider ?? "injected",
             marketProviders: deps.marketProviders ?? [],
@@ -381,6 +395,7 @@ export function createApp(deps: AppDependencies) {
 function createCloudBaseDependencies(): AppDependencies {
   const limit = Number.parseInt(process.env.DAILY_AI_LIMIT || `${DEFAULT_DAILY_AI_LIMIT}`, 10);
   const accessKey = process.env.CLOUDBASE_APIKEY;
+  const deepseekApiKey = process.env.DEEPSEEK_API_KEY?.trim();
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const cloudbase = require("@cloudbase/node-sdk") as { init(input: Record<string, unknown>): any };
   const initOptions: Record<string, unknown> = {
@@ -411,7 +426,14 @@ function createCloudBaseDependencies(): AppDependencies {
       if (result.fileContent === undefined) throw new Error("attachment-download-empty");
       return Buffer.isBuffer(result.fileContent) ? result.fileContent : Buffer.from(result.fileContent);
     },
-    createAiModel: () => app.ai().createModel(process.env.AI_PROVIDER || DEFAULT_AI_PROVIDER) as AiModel,
+    deepseekConfigured: Boolean(deepseekApiKey),
+    availableModels: [DEFAULT_AI_MODEL, ...(deepseekApiKey ? [DEEPSEEK_AI_MODEL] : [])],
+    createAiModel: () => ({
+      streamText: (input) => input.model === DEEPSEEK_AI_MODEL
+        ? new DeepSeekModel(deepseekApiKey ?? "").streamText(input)
+        : (app.ai().createModel(process.env.AI_PROVIDER || DEFAULT_AI_PROVIDER) as AiModel)
+            .streamText({ ...input, model: process.env.AI_MODEL || DEFAULT_AI_MODEL }),
+    }),
     now: () => new Date(),
   };
 }

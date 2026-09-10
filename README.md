@@ -37,7 +37,7 @@ adb -s emulator-5554 shell am start -W -n com.example.talktoai/.KuiklyRenderActi
 
 普通 Android 构建不会执行 Kuikly JS 分包任务，`packEntryJSBundle... is NOT in execution graph` 表示主动跳过，不是构建失败。
 
-测试环境接口：`https://stockai-test-d6gd0ho1z97f0bbde.service.tcloudbase.com/talktoai`。CloudBase Node SDK 在函数内调用 `cloudbase / hy3`；Android 不保存服务端密钥。测试环境已经完成真实 SSE 与云存储上传验证。
+测试环境接口：`https://stockai-test-d6gd0ho1z97f0bbde.service.tcloudbase.com/talktoai`。CloudBase 函数代理腾讯混元 `hy3` 与 DeepSeek `deepseek-v4-flash`，Android 只传白名单模型 ID，不保存服务端密钥。DeepSeek API Key 仅允许保存在测试函数环境变量 `DEEPSEEK_API_KEY`；凭证记录 ID 不是模型请求参数。
 
 详细资料：
 

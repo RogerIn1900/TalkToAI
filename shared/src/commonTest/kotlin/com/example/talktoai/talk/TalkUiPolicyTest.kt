@@ -9,6 +9,14 @@ import kotlin.test.assertTrue
 
 class TalkUiPolicyTest {
     @Test
+    fun modelIdsAreAllowlistedAndHaveStableUserFacingLabels() {
+        assertEquals(TalkUiPolicy.MODEL_HY3, TalkUiPolicy.normalizeModel("unknown"))
+        assertEquals(TalkUiPolicy.MODEL_DEEPSEEK, TalkUiPolicy.normalizeModel("deepseek-v4-flash"))
+        assertEquals("腾讯混元 hy3", TalkUiPolicy.modelLabel(TalkUiPolicy.MODEL_HY3))
+        assertEquals("DeepSeek V4 Flash", TalkUiPolicy.modelLabel(TalkUiPolicy.MODEL_DEEPSEEK))
+    }
+
+    @Test
     fun derivedChartsWaitUntilAssistantStreamingIsStable() {
         assertFalse(TalkUiPolicy.shouldRenderDerivedCharts("assistant", "streaming"))
         assertTrue(TalkUiPolicy.shouldRenderDerivedCharts("assistant", "complete"))

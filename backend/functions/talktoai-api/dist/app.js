@@ -5,6 +5,7 @@ exports.createProductionApp = createProductionApp;
 const node_crypto_1 = require("node:crypto");
 const node_http_1 = require("node:http");
 const constants_1 = require("./constants");
+const deepseek_1 = require("./deepseek");
 const market_data_1 = require("./market-data");
 const quota_1 = require("./quota");
 const validation_1 = require("./validation");
@@ -188,6 +189,13 @@ async function handleChat(req, res, deps, requestId) {
     if (deps.aiConfigured === false) {
         throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证", false);
     }
+    if (input.model === constants_1.DEEPSEEK_AI_MODEL && deps.deepseekConfigured === false) {
+        throw new ApiError(503, "AI_MODEL_NOT_CONFIGURED", "DeepSeek测试模型尚未配置", false);
+    }
+    if (input.model === constants_1.DEEPSEEK_AI_MODEL &&
+        input.attachments?.some((attachment) => attachment.mimeType.startsWith("image/"))) {
+        throw new ApiError(400, "MODEL_ATTACHMENT_UNSUPPORTED", "DeepSeek文本模型暂不支持图片附件", false);
+    }
     const marketRequest = inferMarketRequest(input.messages);
     let market = marketRequest && !marketRequest.overview
         ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
@@ -223,7 +231,7 @@ async function handleChat(req, res, deps, requestId) {
             sse(res, "citation", { kind: "attachment", attachmentId: attachment.id, title: attachment.name });
         }
         const result = await deps.createAiModel().streamText({
-            model: process.env.AI_MODEL || constants_1.DEFAULT_AI_MODEL,
+            model: input.model,
             messages: modelMessages,
         });
         let fullText = "";
@@ -275,6 +283,7 @@ function createApp(deps) {
                     version: "1.0.0",
                     capabilities: {
                         aiReady: deps.aiConfigured !== false,
+                        models: deps.availableModels ?? [constants_1.DEFAULT_AI_MODEL],
                         marketReady: true,
                         marketProvider: deps.marketProvider ?? "injected",
                         marketProviders: deps.marketProviders ?? [],
@@ -326,6 +335,7 @@ function createApp(deps) {
 function createCloudBaseDependencies() {
     const limit = Number.parseInt(process.env.DAILY_AI_LIMIT || `${constants_1.DEFAULT_DAILY_AI_LIMIT}`, 10);
     const accessKey = process.env.CLOUDBASE_APIKEY;
+    const deepseekApiKey = process.env.DEEPSEEK_API_KEY?.trim();
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cloudbase = require("@cloudbase/node-sdk");
     const initOptions = {
@@ -357,7 +367,14 @@ function createCloudBaseDependencies() {
                 throw new Error("attachment-download-empty");
             return Buffer.isBuffer(result.fileContent) ? result.fileContent : Buffer.from(result.fileContent);
         },
-        createAiModel: () => app.ai().createModel(process.env.AI_PROVIDER || constants_1.DEFAULT_AI_PROVIDER),
+        deepseekConfigured: Boolean(deepseekApiKey),
+        availableModels: [constants_1.DEFAULT_AI_MODEL, ...(deepseekApiKey ? [constants_1.DEEPSEEK_AI_MODEL] : [])],
+        createAiModel: () => ({
+            streamText: (input) => input.model === constants_1.DEEPSEEK_AI_MODEL
+                ? new deepseek_1.DeepSeekModel(deepseekApiKey ?? "").streamText(input)
+                : app.ai().createModel(process.env.AI_PROVIDER || constants_1.DEFAULT_AI_PROVIDER)
+                    .streamText({ ...input, model: process.env.AI_MODEL || constants_1.DEFAULT_AI_MODEL }),
+        }),
         now: () => new Date(),
     };
 }

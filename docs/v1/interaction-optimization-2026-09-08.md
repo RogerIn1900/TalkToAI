@@ -13,7 +13,7 @@
 | 全屏与归位 | 共用原生图表容器；全屏有返回；退出还原原位置；归位解除横轴缩放限制并清除高亮 | ChartInteractionHost.kt |
 | 行情图复用 | 继续使用现有 MPAndroidChart，K线与成交量同步窗口；成交量紧凑轴仅保留两个刻度，起点为零 | TalkMarketChartView.kt |
 | 附件返回 | “添加附件”选择图片或 CSV/TXT，提供明确返回按钮；后续进入系统文件选择器 | KuiklyRenderActivity.kt |
-| 输入框下方模型 | 展示当前 hy3，点击打开单选模型窗口；当前测试后端只开放一个模型，不虚构其他可用模型 | TalkToAiPager.kt、KRBridgeModule.kt |
+| 输入框下方模型 | 展示当前模型，点击打开单选窗口；支持腾讯混元 hy3 与 DeepSeek V4 Flash，选择结果本地持久化并随聊天请求传到后端白名单路由 | TalkToAiPager.kt、KRBridgeModule.kt、ThemePreferences.kt |
 | 侧边栏刷新 | 复用 Kuikly Refresh，下拉重新读取会话、插件及诊断状态，结束刷新并提示结果 | TalkToAiPager.kt、TalkToAiViewModel.kt |
 | 长会话到底部 | 内容/视口变化时计算最新位置；恢复会话自动滚到底部；用户主动向上阅读时停止跟随 | TalkToAiPager.kt |
 
@@ -47,13 +47,13 @@
 - `interaction-liked-single-chart.png`：已赞反馈、柱状单选。
 - `interaction-chart-fullscreen.png`、`interaction-chart-hidden.png`：全屏返回、图例隐藏。
 - `interaction-attachment-return.png`：附件返回入口。
-- `interaction-model-picker.png`：单模型选择入口。
+- `interaction-model-picker.png`：历史单模型选择入口；DeepSeek 接入后的双模型证据需以新快照为准。
 - `interaction-sidebar-refresh.png`：手势刷新完成提示。
 - `interaction-restored-bottom.png`：恢复内容后自动显示末尾状态栏。
 
 ## 剩余边界
 
-- 当前仅 hy3 可用；真正跨模型切换需后端开放并验证额外模型。
+- hy3 已有历史线上 SSE 证据；DeepSeek 已完成本地契约测试与后端选择链路，是否完成线上生成以最新测试报告为准。
 - 行情仍可能为带明确标记的固定测试数据，不是实时生产数据源验收。
 - K线与成交量保持同步固定窗口，暂未实现两图联动手势缩放；归位显示全部数据可用。
 - 点赞是本地当前会话 UI 状态，不代表模型训练反馈上传或跨设备持久化。

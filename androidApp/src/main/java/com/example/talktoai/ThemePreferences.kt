@@ -2,6 +2,7 @@ package com.example.talktoai
 
 import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
+import com.example.talktoai.chat.AiModels
 
 enum class ThemeMode(val wireName: String, val delegateMode: Int) {
     SYSTEM("system", AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM),
@@ -29,6 +30,9 @@ class ThemePreferences(context: Context) {
     fun getAvatarStyle(): String = preferences.getString(KEY_AVATAR_STYLE, AVATAR_STYLE_TEXT)
         ?.takeIf(ALLOWED_AVATAR_STYLES::contains) ?: AVATAR_STYLE_TEXT
 
+    fun getAiModel(): String = preferences.getString(KEY_AI_MODEL, AiModels.DEFAULT)
+        ?.takeIf(AiModels.allowed::contains) ?: AiModels.DEFAULT
+
     fun set(mode: ThemeMode, resumeDestination: String? = null) {
         if (mode == get()) return
         val editor = preferences.edit().putString(KEY_MODE, mode.wireName)
@@ -52,6 +56,12 @@ class ThemePreferences(context: Context) {
         editor.apply()
     }
 
+    fun setAiModel(model: String): Boolean {
+        if (model !in AiModels.allowed) return false
+        preferences.edit().putString(KEY_AI_MODEL, model).apply()
+        return true
+    }
+
     fun consumeResumeDestination(): String {
         val destination = preferences.getString(KEY_RESUME_DESTINATION, "").orEmpty()
         if (destination.isNotEmpty()) preferences.edit().remove(KEY_RESUME_DESTINATION).apply()
@@ -64,6 +74,7 @@ class ThemePreferences(context: Context) {
         private const val KEY_BUBBLE_STYLE = "bubble_style"
         private const val KEY_AVATAR_STYLE = "avatar_style"
         private const val KEY_RESUME_DESTINATION = "resume_destination"
+        private const val KEY_AI_MODEL = "ai_model"
         private const val BUBBLE_STYLE_SOFT = "soft"
         private const val AVATAR_STYLE_TEXT = "text"
         const val RESUME_APPEARANCE = "appearance"
