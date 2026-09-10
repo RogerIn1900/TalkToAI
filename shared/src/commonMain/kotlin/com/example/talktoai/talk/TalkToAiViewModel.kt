@@ -27,18 +27,6 @@ internal class TalkToAiViewModel(
     var marketSummary: String by observable("点击下方周期加载 600000.SH 测试行情")
     var marketBars: List<MarketBarUi> by observable(emptyList())
     var marketDetailVisible: Boolean by observable(false)
-    var dashboardState: com.talktoai.marketui.MarketDashboardState by observable(com.talktoai.marketui.MarketDashboardState())
-    var dashboardRows: ObservableList<com.talktoai.marketui.MarketDashboardState> by observableList()
-
-    init { dashboardRows.add(dashboardState) }
-
-    fun selectDashboard(action: com.talktoai.marketui.MarketDashboardAction) {
-        val next = com.talktoai.marketui.MarketDashboardPolicy.reduce(dashboardState, action)
-        if (next == dashboardState) return
-        dashboardState = next
-        dashboardRows.clear()
-        dashboardRows.add(next)
-    }
     var marketSnapshot: MarketSnapshotUi? by observable(null)
     var marketLoading: Boolean by observable(false)
     var marketPeriod: String by observable("day")
@@ -363,8 +351,8 @@ internal class TalkToAiViewModel(
     fun chartTableVisible(chartKey: String): Boolean = chartKey in visibleChartTableKeys
 
     fun openSelection(messageId: String, selectionTop: Float, selectionHeight: Float, bubbleTop: Float = 0f) {
-        selectionToolbarTop = TalkUiPolicy.selectionToolbarBelow(selectionTop, selectionHeight, bubbleTop)
         selectedMessageId = messageId
+        selectionToolbarTop = TalkUiPolicy.selectionToolbarBelow(selectionTop, selectionHeight, bubbleTop)
     }
 
     fun selectMessageChartType(messageId: String, chartType: String) {
@@ -957,6 +945,7 @@ internal class TalkToAiViewModel(
         private const val MAX_ATTACHMENTS = 5
         private const val DEFAULT_MESSAGE_WINDOW = 100
         private const val MESSAGE_WINDOW_STEP = 100
+        private const val SELECTION_TOOLBAR_GAP = 6f
         const val DATE_TARGET_FROM = "from"
         const val DATE_TARGET_TO = "to"
     }

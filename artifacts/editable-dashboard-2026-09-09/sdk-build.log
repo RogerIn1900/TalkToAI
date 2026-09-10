@@ -1,0 +1,74 @@
+> Task :verifyReleaseVersion
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :preBuild UP-TO-DATE
+> Task :preDebugBuild UP-TO-DATE
+> Task :generateDebugResValues UP-TO-DATE
+> Task :generateDebugResources UP-TO-DATE
+> Task :packageDebugResources UP-TO-DATE
+> Task :parseDebugLocalResources UP-TO-DATE
+> Task :generateDebugRFile UP-TO-DATE
+> Task :compileDebugKotlinAndroid UP-TO-DATE
+> Task :javaPreCompileDebug UP-TO-DATE
+> Task :compileDebugJavaWithJavac NO-SOURCE
+> Task :bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :bundleLibCompileToJarDebug UP-TO-DATE
+> Task :preDebugUnitTestBuild UP-TO-DATE
+> Task :generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :processDebugJavaRes UP-TO-DATE
+> Task :preReleaseBuild UP-TO-DATE
+> Task :mergeReleaseJniLibFolders UP-TO-DATE
+> Task :mergeReleaseNativeLibs NO-SOURCE
+> Task :stripReleaseDebugSymbols NO-SOURCE
+> Task :copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :generateReleaseResValues UP-TO-DATE
+> Task :extractDeepLinksForAarRelease UP-TO-DATE
+> Task :generateReleaseResources UP-TO-DATE
+> Task :packageReleaseResources UP-TO-DATE
+> Task :parseReleaseLocalResources UP-TO-DATE
+> Task :generateReleaseRFile UP-TO-DATE
+> Task :javaPreCompileRelease UP-TO-DATE
+> Task :mergeReleaseShaders UP-TO-DATE
+> Task :compileReleaseShaders NO-SOURCE
+> Task :generateReleaseAssets UP-TO-DATE
+> Task :releaseAssetsCopyForAGP NO-SOURCE
+> Task :packageReleaseAssets UP-TO-DATE
+> Task :prepareLintJarForPublish UP-TO-DATE
+> Task :prepareReleaseArtProfile UP-TO-DATE
+> Task :processReleaseManifest UP-TO-DATE
+> Task :writeReleaseAarMetadata UP-TO-DATE
+> Task :mapReleaseSourceSetPaths UP-TO-DATE
+> Task :mergeReleaseResources UP-TO-DATE
+> Task :verifyReleaseResources UP-TO-DATE
+> Task :extractProguardFiles UP-TO-DATE
+> Task :preReleaseUnitTestBuild UP-TO-DATE
+> Task :writeReleaseLintModelMetadata UP-TO-DATE
+> Task :compileDebugUnitTestKotlinAndroid
+> Task :compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :processDebugUnitTestJavaRes UP-TO-DATE
+> Task :testDebugUnitTest
+> Task :compileReleaseKotlinAndroid
+> Task :extractReleaseAnnotations
+> Task :compileReleaseJavaWithJavac NO-SOURCE
+> Task :mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :processReleaseJavaRes UP-TO-DATE
+> Task :mergeReleaseJavaResource UP-TO-DATE
+> Task :syncReleaseLibJars
+> Task :bundleReleaseAar
+> Task :assembleRelease
+> Task :generateReleaseLintReportModel
+> Task :bundleReleaseLocalLintAar
+> Task :bundleLibRuntimeToJarRelease
+> Task :createFullJarRelease
+> Task :generateReleaseUnitTestLintModel
+> Task :lintAnalyzeReleaseUnitTest
+> Task :lintAnalyzeRelease
+
+> Task :lintReportRelease
+Wrote HTML report to file:///Users/jerry/.codex/worktrees/5583/TalkToAI/market-ui/build/reports/lint-results-release.html
+
+> Task :lintRelease
+
+BUILD SUCCESSFUL in 2s
+53 actionable tasks: 16 executed, 37 up-to-date

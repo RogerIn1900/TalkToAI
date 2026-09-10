@@ -1,0 +1,233 @@
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+
+> Configure project :shared
+[KuiklyGradle][KuiklyPlugin] apply
+[KuiklyGradle][KuiklyPlugin] Using KSP dependency: com.tencent.kuikly-open:core-ksp:2.27.0-2.1.21
+The 'ksp' configuration is deprecated in Kotlin Multiplatform projects. Please use target-specific configurations like 'kspJvm' instead.
+[KuiklyGradle][JSSplitProcessor] Registered dynamic KSP arguments via Provider-based arg (KSP 2.x) with rootProject.ext sharing
+[KuiklyGradle][JSSplitProcessor] Registered dynamic KSP arguments for packEntryJSBundle context
+[KuiklyGradle][JSProcessor] js config is null
+[KuiklyGradle][JSSplitProcessor] JSConfig not configured in KuiklyConfig
+[KuiklyGradle][JSSplitProcessor] JS config not configured, skipping JS split processing
+
+> Task :market-ui:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :market-ui:preBuild UP-TO-DATE
+> Task :market-ui:preDebugBuild UP-TO-DATE
+> Task :market-ui:generateDebugResValues
+> Task :market-ui:generateDebugResources
+> Task :market-ui:packageDebugResources
+> Task :market-ui:javaPreCompileDebug
+> Task :market-ui:writeDebugAarMetadata
+> Task :market-ui:extractDeepLinksDebug
+> Task :shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :shared:preBuild UP-TO-DATE
+> Task :shared:preDebugBuild UP-TO-DATE
+> Task :shared:generateDebugResValues UP-TO-DATE
+> Task :shared:generateDebugResources UP-TO-DATE
+> Task :shared:packageDebugResources UP-TO-DATE
+> Task :shared:parseDebugLocalResources UP-TO-DATE
+> Task :market-ui:parseDebugLocalResources
+> Task :shared:generateDebugRFile UP-TO-DATE
+> Task :shared:javaPreCompileDebug UP-TO-DATE
+> Task :shared:preDebugUnitTestBuild UP-TO-DATE
+> Task :shared:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :androidApp:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :androidApp:preBuild UP-TO-DATE
+> Task :androidApp:preDebugBuild UP-TO-DATE
+> Task :androidApp:generateDebugBuildConfig UP-TO-DATE
+> Task :shared:writeDebugAarMetadata UP-TO-DATE
+> Task :market-ui:processDebugManifest
+> Task :androidApp:checkDebugAarMetadata UP-TO-DATE
+> Task :androidApp:generateDebugResValues UP-TO-DATE
+> Task :androidApp:mapDebugSourceSetPaths UP-TO-DATE
+> Task :market-ui:compileDebugLibraryResources
+> Task :androidApp:generateDebugResources UP-TO-DATE
+> Task :androidApp:mergeDebugResources UP-TO-DATE
+> Task :androidApp:packageDebugResources UP-TO-DATE
+> Task :market-ui:generateDebugRFile
+> Task :market-ui:mergeDebugShaders
+> Task :androidApp:parseDebugLocalResources UP-TO-DATE
+> Task :shared:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :androidApp:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :androidApp:extractDeepLinksDebug UP-TO-DATE
+> Task :shared:extractDeepLinksDebug UP-TO-DATE
+> Task :shared:processDebugManifest UP-TO-DATE
+> Task :androidApp:processDebugMainManifest UP-TO-DATE
+> Task :androidApp:processDebugManifest UP-TO-DATE
+> Task :androidApp:processDebugManifestForPackage UP-TO-DATE
+> Task :shared:compileDebugLibraryResources UP-TO-DATE
+> Task :androidApp:processDebugResources UP-TO-DATE
+> Task :androidApp:javaPreCompileDebug UP-TO-DATE
+> Task :androidApp:preDebugUnitTestBuild UP-TO-DATE
+> Task :androidApp:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :androidApp:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :androidApp:mergeDebugShaders UP-TO-DATE
+> Task :androidApp:compileDebugShaders NO-SOURCE
+> Task :androidApp:generateDebugAssets UP-TO-DATE
+> Task :shared:mergeDebugShaders UP-TO-DATE
+> Task :shared:compileDebugShaders NO-SOURCE
+> Task :shared:debugAssetsCopyForAGP NO-SOURCE
+> Task :shared:generateDebugAssets UP-TO-DATE
+> Task :shared:packageDebugAssets UP-TO-DATE
+> Task :market-ui:compileDebugShaders NO-SOURCE
+> Task :market-ui:debugAssetsCopyForAGP NO-SOURCE
+> Task :market-ui:generateDebugAssets UP-TO-DATE
+> Task :market-ui:packageDebugAssets
+> Task :androidApp:l8DexDesugarLibDebug UP-TO-DATE
+> Task :androidApp:mergeDebugAssets UP-TO-DATE
+> Task :androidApp:compressDebugAssets UP-TO-DATE
+> Task :market-ui:mergeDebugJniLibFolders
+> Task :androidApp:checkDebugDuplicateClasses UP-TO-DATE
+> Task :market-ui:mergeDebugNativeLibs NO-SOURCE
+> Task :androidApp:desugarDebugFileDependencies UP-TO-DATE
+> Task :market-ui:stripDebugDebugSymbols NO-SOURCE
+> Task :market-ui:copyDebugJniLibsProjectOnly
+> Task :market-ui:copyDebugJniLibsProjectAndLocalJars
+> Task :market-ui:extractDeepLinksForAarDebug
+> Task :androidApp:mergeExtDexDebug UP-TO-DATE
+> Task :androidApp:mergeDebugJniLibFolders UP-TO-DATE
+> Task :shared:mergeDebugJniLibFolders UP-TO-DATE
+> Task :shared:mergeDebugNativeLibs NO-SOURCE
+> Task :shared:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :market-ui:prepareDebugArtProfile
+> Task :market-ui:prepareLintJarForPublish
+> Task :androidApp:mergeDebugNativeLibs NO-SOURCE
+> Task :androidApp:stripDebugDebugSymbols NO-SOURCE
+> Task :market-ui:writeDebugLintModelMetadata
+> Task :androidApp:validateSigningDebug UP-TO-DATE
+> Task :androidApp:writeDebugAppMetadata UP-TO-DATE
+> Task :androidApp:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :androidApp:preDebugAndroidTestBuild SKIPPED
+> Task :market-ui:extractProguardFiles
+> Task :market-ui:preDebugAndroidTestBuild UP-TO-DATE
+> Task :market-ui:generateDebugAndroidTestResValues
+> Task :market-ui:preDebugUnitTestBuild UP-TO-DATE
+> Task :androidApp:processDebugAndroidTestManifest UP-TO-DATE
+> Task :androidApp:generateDebugAndroidTestBuildConfig UP-TO-DATE
+> Task :androidApp:checkDebugAndroidTestAarMetadata UP-TO-DATE
+> Task :androidApp:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :androidApp:mapDebugAndroidTestSourceSetPaths UP-TO-DATE
+> Task :androidApp:generateDebugAndroidTestResources UP-TO-DATE
+> Task :androidApp:mergeDebugAndroidTestResources UP-TO-DATE
+> Task :androidApp:processDebugAndroidTestResources UP-TO-DATE
+> Task :androidApp:javaPreCompileDebugAndroidTest UP-TO-DATE
+> Task :androidApp:mergeDebugAndroidTestShaders UP-TO-DATE
+> Task :androidApp:compileDebugAndroidTestShaders NO-SOURCE
+> Task :androidApp:generateDebugAndroidTestAssets UP-TO-DATE
+> Task :androidApp:mergeDebugAndroidTestAssets UP-TO-DATE
+> Task :androidApp:compressDebugAndroidTestAssets UP-TO-DATE
+> Task :androidApp:checkDebugAndroidTestDuplicateClasses UP-TO-DATE
+> Task :androidApp:desugarDebugAndroidTestFileDependencies UP-TO-DATE
+> Task :androidApp:mergeExtDexDebugAndroidTest UP-TO-DATE
+> Task :androidApp:mergeDebugAndroidTestJniLibFolders UP-TO-DATE
+> Task :androidApp:mergeDebugAndroidTestNativeLibs NO-SOURCE
+> Task :androidApp:stripDebugAndroidTestDebugSymbols NO-SOURCE
+> Task :androidApp:validateSigningDebugAndroidTest UP-TO-DATE
+> Task :androidApp:writeDebugAndroidTestSigningConfigVersions UP-TO-DATE
+> Task :shared:stripDebugDebugSymbols NO-SOURCE
+> Task :shared:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :shared:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :shared:prepareDebugArtProfile UP-TO-DATE
+> Task :shared:prepareLintJarForPublish UP-TO-DATE
+> Task :shared:writeDebugLintModelMetadata UP-TO-DATE
+> Task :androidApp:extractProguardFiles UP-TO-DATE
+> Task :shared:extractProguardFiles UP-TO-DATE
+> Task :shared:preDebugAndroidTestBuild UP-TO-DATE
+> Task :shared:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :market-ui:compileDebugKotlinAndroid
+> Task :market-ui:compileDebugJavaWithJavac NO-SOURCE
+> Task :market-ui:processDebugJavaRes
+> Task :market-ui:bundleLibCompileToJarDebug
+> Task :market-ui:bundleLibRuntimeToJarDebug
+> Task :market-ui:extractDebugAnnotations
+> Task :market-ui:mergeDebugGeneratedProguardFiles
+> Task :market-ui:mergeDebugConsumerProguardFiles
+> Task :market-ui:createFullJarDebug
+> Task :market-ui:mergeDebugJavaResource
+> Task :market-ui:syncDebugLibJars
+> Task :market-ui:bundleDebugLocalLintAar
+> Task :market-ui:generateDebugLintModel
+> Task :market-ui:generateDebugAndroidTestLintModel
+> Task :market-ui:generateDebugUnitTestLintModel
+> Task :market-ui:lintAnalyzeDebugUnitTest
+> Task :market-ui:lintAnalyzeDebugAndroidTest
+> Task :shared:kspDebugKotlinAndroid
+> Task :shared:compileDebugKotlinAndroid
+> Task :shared:compileDebugJavaWithJavac NO-SOURCE
+> Task :shared:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :shared:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :shared:processDebugJavaRes UP-TO-DATE
+> Task :shared:extractDebugAnnotations
+> Task :shared:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :shared:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :shared:mergeDebugJavaResource UP-TO-DATE
+> Task :shared:syncDebugLibJars UP-TO-DATE
+> Task :shared:bundleDebugLocalLintAar UP-TO-DATE
+> Task :shared:createFullJarDebug UP-TO-DATE
+> Task :shared:generateDebugLintModel
+> Task :shared:generateDebugAndroidTestLintModel
+> Task :shared:generateDebugUnitTestLintModel
+> Task :shared:kspDebugUnitTestKotlinAndroid
+> Task :shared:compileDebugUnitTestKotlinAndroid
+> Task :shared:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :shared:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :market-ui:lintAnalyzeDebug
+> Task :shared:lintAnalyzeDebugAndroidTest
+> Task :shared:lintAnalyzeDebugUnitTest
+> Task :shared:testDebugUnitTest
+> Task :shared:lintAnalyzeDebug
+> Task :androidApp:kspDebugKotlin
+
+> Task :androidApp:compileDebugKotlin
+w: file:///private/var/folders/5h/v_k77xjx1clb8zj7xtw2jmpc0000gn/T/talktoai-dashboard-verify-1y_3sie5/androidApp/src/main/java/com/example/talktoai/KuiklyRenderActivity.kt:68:60 'static field SOFT_INPUT_ADJUST_RESIZE: Int' is deprecated. Deprecated in Java.
+w: file:///private/var/folders/5h/v_k77xjx1clb8zj7xtw2jmpc0000gn/T/talktoai-dashboard-verify-1y_3sie5/androidApp/src/main/java/com/example/talktoai/KuiklyRenderActivity.kt:168:23 'var systemUiVisibility: Int' is deprecated. Deprecated in Java.
+w: file:///private/var/folders/5h/v_k77xjx1clb8zj7xtw2jmpc0000gn/T/talktoai-dashboard-verify-1y_3sie5/androidApp/src/main/java/com/example/talktoai/KuiklyRenderActivity.kt:168:69 'static field SYSTEM_UI_FLAG_LIGHT_STATUS_BAR: Int' is deprecated. Deprecated in Java.
+
+> Task :androidApp:compileDebugJavaWithJavac UP-TO-DATE
+> Task :androidApp:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :androidApp:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :androidApp:processDebugJavaRes UP-TO-DATE
+> Task :androidApp:mergeDebugJavaResource UP-TO-DATE
+> Task :androidApp:dexBuilderDebug
+> Task :androidApp:mergeProjectDexDebug UP-TO-DATE
+> Task :androidApp:generateDebugAndroidTestLintModel
+> Task :androidApp:generateDebugLintReportModel
+> Task :androidApp:generateDebugUnitTestLintModel
+> Task :androidApp:kspDebugUnitTestKotlin
+> Task :androidApp:compileDebugUnitTestKotlin
+> Task :androidApp:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :androidApp:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :androidApp:kspDebugAndroidTestKotlin
+> Task :androidApp:testDebugUnitTest
+> Task :androidApp:compileDebugAndroidTestKotlin
+> Task :androidApp:compileDebugAndroidTestJavaWithJavac UP-TO-DATE
+> Task :androidApp:processDebugAndroidTestJavaRes UP-TO-DATE
+> Task :androidApp:mergeDebugAndroidTestJavaResource UP-TO-DATE
+> Task :androidApp:lintAnalyzeDebugUnitTest
+> Task :androidApp:lintAnalyzeDebugAndroidTest
+> Task :androidApp:dexBuilderDebugAndroidTest
+> Task :androidApp:mergeProjectDexDebugAndroidTest
+> Task :androidApp:mergeLibDexDebugAndroidTest UP-TO-DATE
+> Task :androidApp:packageDebugAndroidTest
+> Task :androidApp:createDebugAndroidTestApkListingFileRedirect UP-TO-DATE
+> Task :androidApp:assembleDebugAndroidTest
+> Task :androidApp:mergeLibDexDebug
+> Task :androidApp:packageDebug
+> Task :androidApp:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :androidApp:assembleDebug
+> Task :androidApp:lintAnalyzeDebug
+
+> Task :androidApp:lintReportDebug
+Wrote HTML report to file:///private/var/folders/5h/v_k77xjx1clb8zj7xtw2jmpc0000gn/T/talktoai-dashboard-verify-1y_3sie5/androidApp/build/reports/lint-results-debug.html
+
+> Task :androidApp:lintDebug
+
+BUILD SUCCESSFUL in 18s
+167 actionable tasks: 72 executed, 95 up-to-date

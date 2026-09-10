@@ -3,10 +3,6 @@ package com.example.talktoai.talk
 import com.example.talktoai.base.BasePager
 import com.example.talktoai.base.BridgeModule
 import com.example.talktoai.base.theme.ThemeColors
-import com.talktoai.marketui.MarketDashboard
-import com.talktoai.marketui.MarketDashboardAction
-import com.talktoai.marketui.MarketDashboardPolicy
-import com.talktoai.marketui.MarketPalette
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BorderStyle
@@ -472,13 +468,11 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
             vif({ ctx.viewModel.selectedMessageId == message.id }) {
                 View {
                     attr {
-                        positionAbsolute()
-                        // Short right-aligned user bubbles must not push the actions off screen.
-                        if (isUser) right(0f) else left(0f)
-                        width(203f); top(ctx.viewModel.selectionToolbarTop); zIndex(25, false)
+                        positionAbsolute(); left(0f); top(ctx.viewModel.selectionToolbarTop); zIndex(25, false)
                         flexDirectionRow(); alignItemsCenter(); padding(4f); borderRadius(9f)
                         backgroundColor(ThemeColors.accent)
                     }
+                    Text { attr { text("已选择"); margin(left = 5f, right = 5f); fontSize(10f); color(ThemeColors.onAccent) } }
                     selectionButton("复制选中") {
                         selectableBubble?.view?.getSelection { result ->
                             ctx.viewModel.copySelectedText(message.id, result.content)
@@ -878,39 +872,14 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ct
             }
         }
         vif({ !ctx.viewModel.marketDetailVisible }) {
-            Scroller {
-                attr { flex(1f); padding(left = 12f, right = 12f, bottom = 16f) }
-                vfor({ ctx.viewModel.dashboardRows }) { state ->
-                    View {
-                        // Aggregate provider is not configured: presentation-only fallback, never AI evidence.
-                        MarketDashboard(MarketDashboardPolicy.resolve(null), state, ctx.pagerData.pageViewWidth - 24f,
-                            MarketPalette(ThemeColors.surface, ThemeColors.background, ThemeColors.onSurface,
-                                ThemeColors.onSurfaceVariant, ThemeColors.accent, ThemeColors.onAccent,
-                                Color(0xFFE5484D), Color(0xFF00856A)),
-                            onAction = { action ->
-                                if (action is MarketDashboardAction.OpenIndex) {
-                                    ctx.viewModel.marketSymbol = action.symbol
-                                    ctx.viewModel.marketDetailVisible = true
-                                    ctx.viewModel.loadMarket("day")
-                                } else ctx.viewModel.selectDashboard(action)
-                            },
-                            chartRenderer = { spec ->
-                                DataChart { attr {
-                                    height(spec.heightDp); chartType(spec.kind); darkMode(ThemeColors.isNightMode)
-                                    chartData(ChartDataUi(spec.title, spec.labels, spec.xLabel, spec.yLabel,
-                                        listOf(ChartSeriesUi(spec.title, spec.values))).toJson())
-                                } }
-                            })
-                    }
-                }
-            }
+            EditableDashboard { attr { flex(1f); darkMode(ThemeColors.isNightMode) } }
         }
         vif({ ctx.viewModel.marketDetailVisible }) { marketDetailContent(ctx) }
     }
 }
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent(ctx: TalkToAiPager) {
-    // Native List virtualizes off-screen rows; chart height must not depend on remaining viewport space.
+    // Virtualize the detail page so the chart and metrics do not collapse into one viewport.
     LazyColumn {
         attr {
             flex(1f); margin(left = 12f, right = 12f, top = 8f, bottom = 12f); padding(14f)
@@ -1083,25 +1052,19 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketSnapshotHeade
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketMetricsTable(snapshot: MarketSnapshotUi) {
     View {
         attr {
-            marginTop(16f); padding(12f); borderRadius(12f)
-            border(Border(0.7f, BorderStyle.SOLID, ThemeColors.divider))
+            marginTop(8f); borderRadius(9f); border(Border(0.7f, BorderStyle.SOLID, ThemeColors.divider))
         }
-        Text { attr { text("行情指标"); fontSize(15f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
-        marketMetricRows(snapshot).forEach { row ->
-            View {
-                attr { flexDirectionRow(); marginTop(10f) }
-                row.forEachIndexed { index, metric ->
-                    View {
-                        attr {
-                            flex(1f); padding(12f); borderRadius(8f); backgroundColor(ThemeColors.background)
-                            if (index > 0) marginLeft(10f)
-                        }
-                        Text { attr { text(metric.first); fontSize(12f); lineHeight(18f); color(ThemeColors.onSurfaceVariant) } }
-                        Text { attr { text(metric.second); marginTop(6f); fontSize(18f); lineHeight(25f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
-                    }
-                }
-            }
-        }
+        compactTableRow(listOf("开", "高", "低", "收", "成交量"), header = true)
+        compactTableRow(
+            listOf(
+                TalkUiPolicy.formatQuote(snapshot.open),
+                TalkUiPolicy.formatQuote(snapshot.high),
+                TalkUiPolicy.formatQuote(snapshot.low),
+                TalkUiPolicy.formatQuote(snapshot.close),
+                TalkUiPolicy.formatVolume(snapshot.volume),
+            ),
+            header = false,
+        )
     }
 }
 
