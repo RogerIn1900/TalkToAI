@@ -43,7 +43,7 @@ class EditableDashboardTest {
     }
 
     @Test
-    fun dashboardScrollClipsTheCanvasWhileTheCanvasAllowsResizeHandles() {
+    fun dashboardScrollAndCanvasClipAllCardContentToTheParentViewport() {
         ActivityScenario.launch(KuiklyRenderActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val board = DashboardView(activity)
@@ -53,7 +53,7 @@ class EditableDashboardTest {
                 assertTrue(scroll.clipChildren)
                 assertTrue(scroll.clipToPadding)
                 val canvas = scroll.getChildAt(0) as android.widget.FrameLayout
-                assertFalse("Card resize handles may extend within the clipped viewport", canvas.clipChildren)
+                assertTrue("Card content and controls must stay inside the parent viewport", canvas.clipChildren)
                 assertTrue(canvas.clipToPadding)
             }
         }
