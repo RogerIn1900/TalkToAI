@@ -59,7 +59,8 @@ class ChatCoordinator(
         val now = nowMs()
         val assistantMessage = ChatMessage(requestId, MessageRole.ASSISTANT, "", MessageStatus.STREAMING, now)
         var session = baseSession.copy(updatedAtMs = now, messages = baseSession.messages + assistantMessage)
-        var lastPublishedAtMs = 0L
+        var lastPublishedAtMs = now - STREAM_PUBLISH_INTERVAL_MS
+        var publishedContentLength = 0
         store.upsert(session)
         emit(snapshotEvent("session", session, requestId))
         val currentAttachments = baseSession.messages.lastOrNull { it.role == MessageRole.USER }?.attachments.orEmpty()
@@ -76,8 +77,11 @@ class ChatCoordinator(
                         }
                         val publishAtMs = nowMs()
                         if (publishAtMs - lastPublishedAtMs >= STREAM_PUBLISH_INTERVAL_MS) {
+                            val content = session.messages.first { it.id == requestId }.content
+                            val pendingDelta = content.drop(publishedContentLength)
                             store.upsert(session, durable = false)
-                            emit(snapshotEvent("delta", session, requestId))
+                            emit(patchEvent("delta", requestId).put("messageId", requestId).put("text", pendingDelta))
+                            publishedContentLength = content.length
                             lastPublishedAtMs = publishAtMs
                         }
                     }
@@ -93,7 +97,7 @@ class ChatCoordinator(
                     "market" -> {
                         session = updateAssistant(session, requestId) { it.copy(marketDataJson = data.toString()) }
                         store.upsert(session)
-                        emit(snapshotEvent("market", session, requestId).put("market", data))
+                        emit(patchEvent("market", requestId).put("messageId", requestId).put("market", data))
                     }
                     "citation" -> {
                         val url = data.optString("url")
@@ -103,7 +107,7 @@ class ChatCoordinator(
                             }
                             store.upsert(session)
                         }
-                        emit(snapshotEvent("citation", session, requestId).put("citation", data))
+                        emit(patchEvent("citation", requestId).put("messageId", requestId).put("citation", data))
                     }
                 }
             }
@@ -187,6 +191,11 @@ class ChatCoordinator(
         .put("type", type)
         .put("requestId", requestId)
         .put("session", sessionJson(session))
+
+    /** High-frequency events carry only the changed tail message field. */
+    private fun patchEvent(type: String, requestId: String): JSONObject = JSONObject()
+        .put("type", type)
+        .put("requestId", requestId)
 
     private fun sessionJson(session: ChatSession, totalMessages: Int = session.messages.size): JSONObject = JSONObject().apply {
         put("id", session.id)

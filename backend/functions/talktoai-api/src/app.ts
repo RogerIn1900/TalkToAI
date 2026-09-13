@@ -12,8 +12,9 @@ import {
   SYSTEM_PROMPT,
 } from "./constants";
 import { createDevelopmentMarketData, type MarketProviderStatus } from "./market-data";
+import { inferMarketQuery } from "./market-query";
 import { CloudBaseQuotaStore, CloudBaseSqlQuotaStore, MemoryQuotaStore } from "./quota";
-import type { AttachmentRef, Bar, ChatMessage, MarketDataProvider, MarketEnvelope, Period, QuotaStore } from "./types";
+import type { AttachmentRef, Bar, ChatMessage, MarketDataProvider, MarketEnvelope, QuotaStore } from "./types";
 import { parseChatRequest, parseIsoDate, parsePeriod, parseSymbol, RequestValidationError } from "./validation";
 
 interface AiTextStream {
@@ -118,32 +119,7 @@ function sse(res: ServerResponse, event: string, data: unknown): void {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-interface MarketRequest {
-  symbol: string;
-  period: Period;
-  overview: boolean;
-}
-
-const OVERVIEW_INDICES = ["000001.SH", "399001.SZ", "399006.SZ"] as const;
 type MarketResult = MarketEnvelope<Bar[]> & { overview?: MarketEnvelope<Bar[]>[]; unavailable?: string[] };
-
-function inferMarketRequest(messages: ChatMessage[]): MarketRequest | undefined {
-  const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
-  const mentionsMarket = /(大盘|行情|走势|指数|K\s*线|成交量|A\s*股)/i.test(content)
-    || /(?:今日数据|今天数据)/.test(content.replace(/\s/g, ""))
-    || /(?:今日|今天).*(?:市场|盘面|涨跌)/.test(content)
-    || /(?:市场|盘面|涨跌).*(?:今日|今天)/.test(content)
-    || /(?:today\s*market|market\s*today|a-?share|stock\s*index|kline)/i.test(content);
-  if (!mentionsMarket) return undefined;
-  const explicit = content.match(/\b([036]\d{5})(?:\.(SH|SZ))?\b/i);
-  const code = explicit?.[1];
-  const suffix = explicit?.[2]?.toUpperCase() ?? (code?.startsWith("6") ? "SH" : "SZ");
-  return {
-    symbol: code ? `${code}.${suffix}` : "000001.SH",
-    overview: !code && /大盘|市场|盘面|today.*market|market.*today/i.test(content),
-    period: /分时|盘中/.test(content) ? "intraday" : /月线|月K/i.test(content) ? "month" : /周线|周K/i.test(content) ? "week" : "day",
-  };
-}
 
 async function toAiMessages(
   messages: ChatMessage[],
@@ -240,19 +216,19 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, deps: AppDe
   if (deps.aiConfigured === false) {
     throw new ApiError(503, "AI_NOT_CONFIGURED", "测试环境尚未配置AI服务凭证", false);
   }
-  const marketRequest = inferMarketRequest(input.messages);
-  let market: MarketResult | undefined = marketRequest && !marketRequest.overview
-    ? await deps.market.bars(marketRequest.symbol, marketRequest.period, undefined, undefined, deps.now())
-    : undefined;
-  if (marketRequest?.overview) {
-    const additional = await Promise.allSettled(OVERVIEW_INDICES.map((symbol) =>
+  const marketRequest = inferMarketQuery(input.messages);
+  let market: MarketResult | undefined;
+  if (marketRequest && marketRequest.symbols.length === 1) {
+    market = await deps.market.bars(marketRequest.symbols[0]!, marketRequest.period, undefined, undefined, deps.now());
+  } else if (marketRequest) {
+    const additional = await Promise.allSettled(marketRequest.symbols.map((symbol) =>
       deps.market.bars(symbol, marketRequest.period, undefined, undefined, deps.now())));
     const available = additional.flatMap((result) => result.status === "fulfilled" && result.value.data.length ? [result.value] : []);
-    if (!available.length) throw new ApiError(503, "MARKET_UNAVAILABLE", "主要指数数据暂不可用，请重试；不会生成虚构行情", true);
+    if (!available.length) throw new ApiError(503, "MARKET_UNAVAILABLE", "请求的行情数据暂不可用，请重试；不会生成虚构行情", true);
     market = {
       ...available[0]!,
       overview: available,
-      unavailable: additional.flatMap((result, index) => result.status === "rejected" || !result.value.data.length ? [OVERVIEW_INDICES[index]!] : []),
+      unavailable: additional.flatMap((result, index) => result.status === "rejected" || !result.value.data.length ? [marketRequest.symbols[index]!] : []),
     };
   }
   // Resolve and authorize attachment content before quota consumption and before SSE headers are sent.

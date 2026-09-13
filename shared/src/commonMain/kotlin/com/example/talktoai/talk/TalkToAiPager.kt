@@ -462,6 +462,8 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
     pageWidth: Float,
 ) {
     val isUser = message.role == "user"
+    val answerBlocks = ChatAnswerBlockPolicy.blocks(message)
+    val marketBlock = answerBlocks.filterIsInstance<ChatAnswerBlockUi.Market>().firstOrNull()
     val markdownBlocks = TalkUiPolicy.markdownBlocks(message.content)
     // A partial Markdown table changes on every SSE delta and would rebuild the native chart.
     // Render it once the answer is stable; the separately delivered market snapshot stays visible.
@@ -492,8 +494,8 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
                     }
                 }
             }
-            if (!isUser && message.marketDataJson.isNotEmpty()) {
-                marketOverviewCard(ctx, message, pageWidth * 0.82f)
+            if (!isUser && marketBlock != null) {
+                marketOverviewCard(ctx, marketBlock, pageWidth * 0.82f)
             }
             View {
                 ref { selectableBubble = it }
@@ -896,12 +898,25 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageActionButton
     }
 }
 
-private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketOverviewCard(ctx: TalkToAiPager, message: ChatMessageUi, cardWidth: Float) {
-    val items = MarketOverviewPolicy.parse(message.marketDataJson)
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketOverviewCard(
+    ctx: TalkToAiPager,
+    block: ChatAnswerBlockUi.Market,
+    cardWidth: Float,
+) {
+    val items = block.items
     View {
         attr { width(cardWidth); padding(10f); marginTop(10f); borderRadius(14f); backgroundColor(ThemeColors.surface) }
         Text { attr { text("市场概览"); fontSize(19f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
         Text { attr { text("回答时行情快照 · 时间与来源以各卡片标注为准"); marginTop(5f); fontSize(10f); color(ThemeColors.onSurfaceVariant) } }
+        View {
+            attr { marginTop(7f); padding(7f); borderRadius(8f); backgroundColor(ThemeColors.surfaceVariant) }
+            Text {
+                attr {
+                    text(MarketOverviewPolicy.provenanceSummary(items))
+                    fontSize(10f); lineHeight(15f); color(ThemeColors.onSurfaceVariant)
+                }
+            }
+        }
         View {
             attr { marginTop(10f); padding(10f); borderRadius(12f); backgroundColor(ThemeColors.surfaceVariant) }
             Text { attr { text("市场温度 · 指数样本"); fontSize(13f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }

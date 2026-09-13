@@ -5,7 +5,20 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 internal data class MarketOverviewItem(val name: String, val snapshot: MarketSnapshotUi, val chart: ChartDataUi)
 
 internal object MarketOverviewPolicy {
-    private val indexNames = mapOf("000001.SH" to "上证指数", "399001.SZ" to "深证成指", "399006.SZ" to "创业板指")
+    private val indexNames = mapOf(
+        "000001.SH" to "上证指数",
+        "399001.SZ" to "深证成指",
+        "399006.SZ" to "创业板指",
+        "600000.SH" to "浦发银行",
+        "600519.SH" to "贵州茅台",
+        "000001.SZ" to "平安银行",
+        "300750.SZ" to "宁德时代",
+        "002594.SZ" to "比亚迪",
+        "600036.SH" to "招商银行",
+        "601318.SH" to "中国平安",
+        "688981.SH" to "中芯国际",
+        "300059.SZ" to "东方财富",
+    )
 
     fun parse(raw: String): List<MarketOverviewItem> = runCatching {
         val root = JSONObject(raw)
@@ -36,5 +49,13 @@ internal object MarketOverviewPolicy {
         val comparable = items.filter { it.snapshot.changePercent != null }
         if (comparable.isEmpty()) return "数据不足，无法统计涨跌"
         return "指数样本上涨 ${comparable.count { it.snapshot.change > 0 }} · 下跌 ${comparable.count { it.snapshot.change < 0 }} · 持平 ${comparable.count { it.snapshot.change == 0f }}"
+    }
+
+    fun provenanceSummary(items: List<MarketOverviewItem>): String {
+        if (items.isEmpty()) return "来源和时效尚未确认"
+        val sources = items.map { it.snapshot.source.ifBlank { "未提供来源" } }.distinct()
+        val freshness = items.map { TalkUiPolicy.freshnessLabel(it.snapshot.freshness) }.distinct()
+        val cache = if (items.any { it.snapshot.clientCacheHit }) " · 含本地缓存" else ""
+        return "${sources.joinToString(" / ")} · ${freshness.joinToString(" / ")}$cache"
     }
 }
