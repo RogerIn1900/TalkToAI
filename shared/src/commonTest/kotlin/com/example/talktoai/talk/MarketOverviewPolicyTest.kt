@@ -28,6 +28,17 @@ class MarketOverviewPolicyTest {
         assertTrue(MarketOverviewPolicy.parse(envelope.replace("测试数据", "TalkToAI 测试固定数据（非实时行情）")).isEmpty())
     }
 
+    @Test fun provenanceSummarizesSourceFreshnessAndCacheWithoutHidingThem() {
+        val item = MarketOverviewPolicy.parse(
+            envelope.replace("\"测试数据\"", "\"交易所授权源\"")
+                .replace("\"freshness\":\"STALE\"", "\"freshness\":\"FRESH\",\"clientCacheHit\":true"),
+        ).single()
+        val summary = MarketOverviewPolicy.provenanceSummary(listOf(item))
+        assertTrue(summary.contains("交易所授权源"))
+        assertTrue(summary.contains("新鲜"))
+        assertTrue(summary.contains("本地缓存"))
+    }
+
     @Test fun selectionToolbarIsBelowSelectionIncludingBubbleOffset() {
         val bottom = 22f + 100f + 48f
         assertTrue(TalkUiPolicy.selectionToolbarBelow(100f, 48f, 22f) > bottom)

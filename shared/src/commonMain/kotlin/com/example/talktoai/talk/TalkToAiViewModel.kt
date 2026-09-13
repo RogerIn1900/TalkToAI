@@ -763,10 +763,18 @@ internal class TalkToAiViewModel(
     private fun handleChatEvent(event: JSONObject) {
         requestScrollToLatest()
         val type = event.optString("type")
-        event.optJSONObject("session")?.let(::applySession)
+        val snapshot = event.optJSONObject("session")
+        if (snapshot != null) applySession(snapshot)
+        val containsSnapshot = snapshot != null
         when (type) {
-            "market" -> applyInlineMarket(event.optJSONObject("market"))
-            "delta" -> status = "正在生成…"
+            "market" -> {
+                applyInlineMarket(event.optJSONObject("market"))
+                if (!containsSnapshot) applyMarketPatch(event)
+            }
+            "delta" -> {
+                if (!containsSnapshot) applyDeltaPatch(event)
+                status = "正在生成…"
+            }
             "done" -> {
                 isGenerating = false
                 activeRequestId = ""
@@ -792,9 +800,36 @@ internal class TalkToAiViewModel(
                 val citation = event.optJSONObject("citation")
                 val url = citation?.optString("url").orEmpty()
                 if (url.isNotEmpty()) {
+                    if (!containsSnapshot) applyCitationPatch(event, url)
                     sourceSummary = if (sourceSummary.startsWith("来源：等待")) "来源：$url" else "$sourceSummary\n$url"
                 }
             }
+        }
+    }
+
+    private fun applyDeltaPatch(event: JSONObject) {
+        updatePatchedMessage(event.optString("messageId")) { message ->
+            ChatStreamPatchPolicy.delta(message, event.optString("text"))
+        }
+    }
+
+    private fun applyMarketPatch(event: JSONObject) {
+        val raw = event.optJSONObject("market")?.toString().orEmpty()
+        if (raw.isEmpty()) return
+        updatePatchedMessage(event.optString("messageId")) { message -> ChatStreamPatchPolicy.market(message, raw) }
+    }
+
+    private fun applyCitationPatch(event: JSONObject, url: String) {
+        updatePatchedMessage(event.optString("messageId")) { message -> ChatStreamPatchPolicy.citation(message, url) }
+    }
+
+    private fun updatePatchedMessage(messageId: String, transform: (ChatMessageUi) -> ChatMessageUi) {
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) return
+        val next = transform(messages[index])
+        if (next != messages[index]) {
+            messages[index] = next
+            syncRenderedMessages()
         }
     }
 
