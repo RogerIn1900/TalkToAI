@@ -22,7 +22,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("io.github.rogerin1900:market-ui:0.3.2")
+                implementation("io.github.rogerin1900:market-ui:0.2.0")
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuiklybase:KuiklyMarkdown:1.0.6-2.1.21")

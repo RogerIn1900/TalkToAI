@@ -29,6 +29,7 @@ import com.example.talktoai.chat.AttachmentStore
 import com.example.talktoai.chat.ChatAttachment
 import com.example.talktoai.chart.TalkDataChartView
 import com.example.talktoai.chart.TalkMarketChartView
+import com.talktoai.marketui.registerMarketUiViews
 import java.util.concurrent.Executors
 
 class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorDelegate {
@@ -81,16 +82,6 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         kuiklyRenderViewDelegator.onDetach()
     }
 
-    private fun pickDashboardCsv(callback: (Result<ChatAttachment>) -> Unit) {
-        if (attachmentCallback != null) {
-            callback(Result.failure(IllegalStateException("ATTACHMENT_PICK_IN_PROGRESS")))
-            return
-        }
-        attachmentCallback = callback
-        // Document providers disagree on CSV MIME types. Validate extension, size and schema after selection.
-        attachmentPicker.launch(arrayOf("*/*"))
-    }
-
     fun pickAttachment(callback: (Result<ChatAttachment>) -> Unit) {
         if (attachmentCallback != null) {
             callback(Result.failure(IllegalStateException("ATTACHMENT_PICK_IN_PROGRESS")))
@@ -138,7 +129,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalRenderView(kuiklyRenderExport)
         with(kuiklyRenderExport) {
-            renderViewExport("TalkDashboard", { context -> com.example.talktoai.dashboard.TalkDashboardView(context) { callback -> pickDashboardCsv(callback) } })
+            registerMarketUiViews(this)
             renderViewExport("TalkDataChart", { context -> TalkDataChartView(context) })
             renderViewExport("TalkMarketChart", { context -> TalkMarketChartView(context) })
         }
@@ -149,6 +140,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         param["appId"] = 1
         param["isNightMode"] = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES
+        param["fontScale"] = resources.configuration.fontScale
         return param
     }
 

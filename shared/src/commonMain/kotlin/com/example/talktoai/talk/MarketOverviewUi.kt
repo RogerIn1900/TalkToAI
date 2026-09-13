@@ -14,6 +14,7 @@ internal object MarketOverviewPolicy {
             (0 until overview.length()).mapNotNull { overview.optJSONObject(it) }
         envelopes.mapNotNull { envelope ->
             runCatching {
+                if (TalkUiPolicy.isFixtureMarketSource(envelope.optString("source"))) return@mapNotNull null
                 val rows = requireNotNull(envelope.optJSONArray("data"))
                 val bars = (0 until rows.length()).map { index ->
                     val bar = requireNotNull(rows.optJSONObject(index))

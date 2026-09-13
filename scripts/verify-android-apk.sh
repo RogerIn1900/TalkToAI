@@ -8,14 +8,14 @@ analyzer=${APKANALYZER:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/cmdline-tools/lat
 classes=$(mktemp)
 trap 'rm -f "$classes"' EXIT
 "$analyzer" dex packages --defined-only "$apk" > "$classes"
-# Manifest startup components and the integrated native dashboard must be packaged.
+# Manifest startup components and the Market UI semantic bridge must be packaged.
 required_classes=(
   androidx.core.content.FileProvider
   androidx.appcompat.app.AppCompatDelegate
   com.example.talktoai.KRApplication
   com.example.talktoai.KuiklyRenderActivity
-  com.example.talktoai.dashboard.TalkDashboardView
-  com.talktoai.marketui.dashboard.DashboardView
+  com.talktoai.marketui.MarketNativeControl
+  com.talktoai.marketui.MarketNativeCachedPanel
 )
 missing=0
 for class_name in "${required_classes[@]}"; do
@@ -25,4 +25,4 @@ for class_name in "${required_classes[@]}"; do
   fi
 done
 [[ "$missing" == 0 ]] || exit 1
-echo "APK startup/dashboard class definitions verified: $apk"
+echo "APK startup/Market UI class definitions verified: $apk"

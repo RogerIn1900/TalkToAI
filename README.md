@@ -10,7 +10,7 @@ TalkToAI 是一个仅提供 A 股信息参考的 Android 测试版应用。客�
 git submodule update --init --recursive
 ```
 
-当前依赖版本为 `0.1.0`。SDK 的快速接入、功能与实现说明见其 README；不要用浮动主分支替换已锁定版本。
+当前使用可组合行情组件 `0.2.0`，Gradle 默认接入 `market-ui` 子模块，固定到上游 `main` 的 `1a6dcd0` 合并提交，包含最新原型布局优化。开发时可用 `-PmarketUiDir=../kuikly-market-ui` 显式接入同级源码；默认构建不会自动引用本机其他工作目录。
 
 Android SDK 本机配置：组合构建中的 `market-ui` 是独立 Gradle 工程，不自动继承宿主的 `local.properties`。如果 Android Studio 未继承 `ANDROID_HOME`，请在宿主根目录和 `market-ui/local.properties` 中分别配置同一个有效的 `sdk.dir`。这两个文件均被 Git 忽略，不应提交本机路径。独立编译 SDK 消费者示例时，也需为其配置 SDK 路径或设置 `ANDROID_HOME`。
 
@@ -47,7 +47,7 @@ adb -s emulator-5554 shell am start -W -n com.example.talktoai/.KuiklyRenderActi
 - [测试环境部署](docs/v1/deployment.md)
 - [验证报告与剩余风险](docs/v1/test-report.md)
 
-## 可编辑看板（UI SDK 0.2.1）
+## 行情看板（UI SDK 0.2.0）
 
 行情页通过 `market-ui` Git 子模块和 Gradle 组合构建使用独立 UI SDK。
 
@@ -57,8 +57,8 @@ git submodule update --init --recursive
 
 为宿主和 `market-ui` 分别配置被 Git 忽略的 `local.properties`，或设置 `ANDROID_HOME`。
 
-新看板支持长按编辑、三点按钮移动与配置、四边缩放、五类展示、CSV 导入、报表快照和本地保存。内置数据明确标为模拟数据；导入和快照仅保存在本机，不发送给 AI。
+行情总览使用 SDK 的 `MarketDashboardView`，个股详情使用独立的 `MarketMetricPanel`。宿主提供 AI 行情数据、来源、请求状态、导航和原生图表适配；缺失的总览区块使用明确标识的模拟示例。
 
-CSV 表头为 `label,value`，或 `label,value,timeMs`；时间为毫秒时间戳，限制 256 KB / 1000 行。配置中保存数据引用，原始数据由宿主单独持久化。
+这次替换移除了旧版可编辑看板的宿主适配（编辑、CSV 导入和布局快照入口），未删除设备上的历史数据文件。对话页现有视觉优化和聊天功能保留。
 
-设计见 [可编辑看板方案](docs/v1/editable-dashboard-sdk-design.md)，SDK 接入说明与 Skill 位于子模块的 `docs/editable-dashboard.md` 和 `skills/kuikly-dashboard/SKILL.md`。
+接入和验证说明见 [最新组件接入记录](docs/v1/market-ui-latest-integration.md)。

@@ -9,10 +9,12 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewRef
+import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.kuikly.core.base.pagerId
 import com.tencent.kuikly.core.base.event.layoutFrameDidChange
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.directives.vfor
+import com.tencent.kuikly.core.directives.vbind
 import com.tencent.kuikly.core.module.NotifyModule
 import com.tencent.kuikly.core.module.CalendarModule
 import com.tencent.kuikly.core.module.ICalendar
@@ -23,6 +25,7 @@ import com.tencent.kuikly.core.views.DatePicker
 import com.tencent.kuikly.core.views.DivView
 import com.tencent.kuikly.core.views.Input
 import com.tencent.kuikly.core.views.InputView
+import com.tencent.kuikly.core.views.Image
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.List as LazyColumn
 import com.tencent.kuikly.core.views.Refresh
@@ -38,6 +41,15 @@ import com.tencent.kuikly.core.timer.setTimeout
 import com.tencent.kuikly.core.timer.clearTimeout
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.talktoai.marketui.MarketBlockId
+import com.talktoai.marketui.MarketChartKind
+import com.talktoai.marketui.MarketChartRenderer
+import com.talktoai.marketui.MarketDashboardView
+import com.talktoai.marketui.MarketFallbackPolicy
+import com.talktoai.marketui.MarketLayoutEnvironment
+import com.talktoai.marketui.MarketMetricPanel
+import com.talktoai.marketui.MarketRenderResult
+import com.talktoai.marketui.MarketTheme
 
 @Page("talk_to_ai", supportInLocal = true)
 internal class TalkToAiPager : BasePager() {
@@ -74,8 +86,8 @@ internal class TalkToAiPager : BasePager() {
 
                 View {
                     attr {
-                        height(54f)
-                        padding(left = 12f, right = 14f)
+                        height(50f)
+                        padding(left = 14f, right = 16f)
                         flexDirectionRow()
                         alignItemsCenter()
                         justifyContentSpaceBetween()
@@ -86,7 +98,7 @@ internal class TalkToAiPager : BasePager() {
                         attr { flexDirectionRow(); alignItemsCenter() }
                         Button {
                             attr {
-                                size(38f, 38f); marginRight(8f); borderRadius(12f)
+                                size(38f, 38f); marginRight(10f); borderRadius(19f)
                                 backgroundColor(ThemeColors.surfaceVariant)
                                 titleAttr { text("☰"); fontSize(20f); color(ThemeColors.onSurface) }
                             }
@@ -95,25 +107,33 @@ internal class TalkToAiPager : BasePager() {
                         Text {
                             attr {
                                 text("TalkToAI")
-                                fontSize(19f)
+                                fontSize(21f)
                                 fontWeightSemiBold()
-                                color(ThemeColors.onSurface)
+                                color(ThemeColors.accent)
                             }
                         }
                     }
                     Text {
                         attr {
-                            text("A股 · hy3 · 只读")
+                            text(if (ctx.viewModel.activeTab == TalkUiPolicy.TAB_MARKET) {
+                                if (ctx.viewModel.marketDetailVisible) "返回行情看板 ›" else "个股查询 ›"
+                            } else "A股 · AI只读助手")
+                            minHeight(48f); lineHeight(48f)
                             fontSize(12f)
                             color(ThemeColors.onSurfaceVariant)
                         }
+                        event { click {
+                            if (ctx.viewModel.activeTab == TalkUiPolicy.TAB_MARKET) ctx.viewModel.marketDetailVisible = !ctx.viewModel.marketDetailVisible
+                        } }
                     }
                 }
 
                 View {
                     attr {
-                        height(46f); padding(left = 12f, right = 12f, top = 8f, bottom = 4f)
-                        flexDirectionRow(); backgroundColor(ThemeColors.background)
+                        height(48f); margin(left = 12f, right = 12f, top = 4f, bottom = 4f)
+                        padding(4f); flexDirectionRow(); borderRadius(22f)
+                        backgroundColor(ThemeColors.surface)
+                        border(Border(0.7f, BorderStyle.SOLID, ThemeColors.divider))
                     }
                     tabButton(ctx, "对话", TalkUiPolicy.TAB_CHAT)
                     tabButton(ctx, "行情", TalkUiPolicy.TAB_MARKET)
@@ -128,7 +148,7 @@ internal class TalkToAiPager : BasePager() {
                     }
                     View {
                         attr { positionAbsolute(); left(0f); right(0f); top(0f); bottom(0f); visibility(ctx.viewModel.activeTab == TalkUiPolicy.TAB_MARKET) }
-                        marketTabContent(ctx)
+                        marketTabContent(ctx, pageWidth)
                     }
                 }
 
@@ -145,15 +165,15 @@ internal class TalkToAiPager : BasePager() {
                 vif({ ctx.viewModel.activeTab == TalkUiPolicy.TAB_CHAT }) {
                     View {
                         attr {
-                            margin(left = 12f, right = 12f, top = 8f, bottom = 10f)
-                            height(50f); flexDirectionRow(); alignItemsCenter()
-                            padding(left = 6f, right = 6f); borderRadius(17f)
+                            margin(left = 14f, right = 14f, top = 8f, bottom = 8f)
+                            height(56f); flexDirectionRow(); alignItemsCenter()
+                            padding(left = 7f, right = 7f); borderRadius(22f)
                             backgroundColor(ThemeColors.surface)
                             border(Border(0.8f, BorderStyle.SOLID, ThemeColors.divider))
                         }
                         Button {
                             attr {
-                                size(38f, 38f); marginRight(4f); borderRadius(12f)
+                                size(40f, 40f); marginRight(5f); borderRadius(20f)
                                 backgroundColor(ThemeColors.surfaceVariant)
                                 titleAttr { text("＋"); color(ThemeColors.onSurface); fontSize(20f) }
                             }
@@ -162,7 +182,8 @@ internal class TalkToAiPager : BasePager() {
                         Input {
                             ref { ctx.inputRef = it }
                             attr {
-                                flex(1f); height(40f); placeholder("问行情、财报或股票基础知识")
+                                flex(1f); height(40f); placeholder("输入你的问题…")
+                                placeholderColor(ThemeColors.onSurfaceVariant)
                                 fontSize(15f); color(ThemeColors.onSurface)
                                 textInputState { ctx.viewModel.inputState }
                             }
@@ -170,9 +191,9 @@ internal class TalkToAiPager : BasePager() {
                         }
                         Button {
                             attr {
-                                size(68f, 38f); borderRadius(12f); backgroundColor(ThemeColors.accent)
+                                size(76f, 40f); borderRadius(20f); backgroundColor(ThemeColors.accent)
                                 titleAttr {
-                                    text(if (ctx.viewModel.isGenerating) "停止" else "发送")
+                                    text(if (ctx.viewModel.isGenerating) "停止" else "↑  发送")
                                     color(ThemeColors.onAccent); fontSize(14f)
                                 }
                             }
@@ -188,8 +209,8 @@ internal class TalkToAiPager : BasePager() {
 
                 vif({ ctx.viewModel.activeTab == TalkUiPolicy.TAB_CHAT }) {
                     View {
-                        attr { height(30f); alignItemsCenter(); justifyContentCenter() }
-                        Text { attr { text("当前模型：腾讯混元 hy3 ▾"); fontSize(12f); color(ThemeColors.onSurfaceVariant) } }
+                        attr { height(32f); alignItemsCenter(); justifyContentCenter() }
+                        Text { attr { text("用 AI 发现更大的中国资本市场  ·  hy3 ▾"); fontSize(11f); color(ThemeColors.onSurfaceVariant) } }
                         event { click { ctx.inputRef.view?.blur(); ctx.viewModel.selectModel() } }
                     }
                 }
@@ -218,6 +239,13 @@ internal class TalkToAiPager : BasePager() {
         viewModel.openSidebar()
     }
 
+    internal fun sendSuggestion(text: String) {
+        viewModel.updateInputState(TextInputState(text))
+        if (viewModel.send() && ::inputRef.isInitialized) {
+            inputRef.view?.setTextInputState(TextInputState(""))
+        }
+    }
+
 }
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.tabButton(
@@ -227,7 +255,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.tabButton(
 ) {
     Button {
         attr {
-            flex(1f); height(34f); margin(left = 3f, right = 3f); borderRadius(11f)
+            flex(1f); height(36f); borderRadius(18f)
             backgroundColor(if (ctx.viewModel.activeTab == tab) ThemeColors.accent else ThemeColors.surface)
             titleAttr {
                 text(title); fontSize(14f); fontWeightSemiBold()
@@ -267,7 +295,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
     Scroller {
         ref { ctx.chatScrollerRef = it }
         attr {
-            flex(1f); padding(left = 12f, right = 12f, top = 8f, bottom = 8f)
+            flex(1f); padding(left = 14f, right = 14f, top = 8f, bottom = 8f)
             backgroundColor(ThemeColors.background)
         }
         event {
@@ -287,24 +315,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
             }
         }
         vif({ ctx.viewModel.messages.isEmpty() }) {
-            View {
-                attr {
-                    padding(18f); marginTop(20f); borderRadius(16f)
-                    backgroundColor(ThemeColors.surface); alignItemsCenter()
-                }
-                Text {
-                    attr {
-                        text("你好，我是 TalkToAI\n可以问我 A 股行情、财报和基础概念")
-                        fontSize(15f); lineHeight(23f); color(ThemeColors.onSurface); textAlignCenter()
-                    }
-                }
-                Text {
-                    attr {
-                        text("仅供信息参考，不构成投资建议 · 禁止下单交易")
-                        marginTop(8f); fontSize(11f); color(ThemeColors.onSurfaceVariant)
-                    }
-                }
-            }
+            chatWelcome(ctx, pageWidth)
         }
         vif({ ctx.viewModel.hasEarlierMessages() }) {
             Button {
@@ -328,6 +339,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
                 }
             }
         }
+        vif({ ctx.viewModel.messages.isNotEmpty() || !ctx.viewModel.online || ctx.viewModel.status != "就绪" }) {
         View {
             attr {
                 margin(top = 6f, bottom = 4f); padding(left = 8f, right = 8f, top = 7f, bottom = 7f)
@@ -340,11 +352,109 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatTabContent(
                 }
             }
         }
+        }
     }
 }
 
 private const val SCROLL_TO_LATEST_DELAY_MS = 250
 private const val SCROLL_FOLLOW_THRESHOLD = 32f
+
+private data class WelcomeSuggestion(val icon: String, val title: String, val caption: String, val prompt: String)
+
+private val welcomeSuggestions = listOf(
+    WelcomeSuggestion("↗", "大盘速览", "快速了解市场整体表现", "今天 A 股大盘怎么样？"),
+    WelcomeSuggestion("▤", "财报解读", "读懂财报里的关键信息", "解读这家公司最新财报"),
+    WelcomeSuggestion("⌁", "K 线入门", "从零开始理解 K 线图", "帮我看懂 K 线走势"),
+    WelcomeSuggestion("◇", "风险检查", "识别潜在风险，理性看待", "有哪些值得关注的风险？"),
+)
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.chatWelcome(ctx: TalkToAiPager, pageWidth: Float) {
+    val fontScale = ctx.pageData.params.optDouble("fontScale", 1.0)
+    val stack = pageWidth < 360f || fontScale > 1.3
+    View {
+        attr {
+            minHeight(178f); marginTop(8f); padding(18f)
+            if (!stack) flexDirectionRow()
+            alignItemsCenter()
+            borderRadius(22f); backgroundColor(ThemeColors.surfaceVariant)
+            border(Border(0.7f, BorderStyle.SOLID, ThemeColors.divider))
+        }
+        View {
+            attr { if (!stack) flex(1f) else width(pageWidth - 64f) }
+            Text { attr { text("你的 AI 市场助手"); fontSize(10f); color(ThemeColors.accent) } }
+            Text {
+                attr {
+                    text("让市场信息，\n更好理解")
+                    marginTop(8f); fontSize(22f); lineHeight(29f); fontWeightSemiBold(); color(ThemeColors.onSurface)
+                }
+            }
+            Text {
+                attr {
+                    text("用 AI 看懂行情、财报与市场变化")
+                    marginTop(8f); fontSize(12f); lineHeight(18f); color(ThemeColors.onSurfaceVariant)
+                }
+            }
+            View {
+                attr {
+                    marginTop(12f)
+                }
+                Text {
+                    attr {
+                        text("只读分析 · 不构成投资建议")
+                        fontSize(10f); color(ThemeColors.accent)
+                    }
+                }
+            }
+        }
+        Image {
+            attr {
+                size(116f, 116f)
+                src(ImageUri.pageAssets("assistant-orb-v2.png"))
+            }
+        }
+    }
+    Text {
+        attr {
+            text("你可以这样问")
+            margin(left = 3f, top = 20f, bottom = 10f)
+            fontSize(13f); fontWeightSemiBold(); color(ThemeColors.onSurfaceVariant)
+        }
+    }
+    welcomeSuggestions.chunked(if (stack) 1 else 2).forEachIndexed { rowIndex, row ->
+        View {
+            attr {
+                flexDirectionRow()
+                if (rowIndex > 0) marginTop(10f)
+            }
+            row.forEachIndexed { index, suggestion ->
+                View {
+                    attr {
+                        flex(1f); minHeight(116f); padding(14f)
+                        justifyContentFlexStart(); borderRadius(17f)
+                        backgroundColor(ThemeColors.surface)
+                        border(Border(0.7f, BorderStyle.SOLID, ThemeColors.divider))
+                        if (row.size > 1) { if (index == 0) marginRight(5f) else marginLeft(5f) }
+                    }
+                    Text { attr { text(suggestion.icon); height(28f); fontSize(23f); color(ThemeColors.accent) } }
+                    Text {
+                        attr {
+                            text(suggestion.title); marginTop(6f); fontSize(14f); fontWeightSemiBold(); lineHeight(20f); color(ThemeColors.onSurface)
+                        }
+                    }
+                    Text { attr { text(suggestion.caption); marginTop(4f); fontSize(11f); lineHeight(16f); color(ThemeColors.onSurfaceVariant) } }
+                    event {
+                        click { ctx.sendSuggestion(suggestion.prompt) }
+                    }
+                }
+            }
+        }
+    }
+    View {
+        attr { marginTop(14f); padding(14f); borderRadius(14f); backgroundColor(ThemeColors.surfaceVariant) }
+        Text { attr { text("如何获得更好的回答"); fontSize(13f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
+        Text { attr { text("给出股票代码、时间范围和你关心的问题。"); marginTop(6f); fontSize(12f); lineHeight(18f); color(ThemeColors.onSurfaceVariant) } }
+    }
+}
 
 private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.messageRow(
     ctx: TalkToAiPager,
@@ -859,30 +969,46 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.inlineMarketCard(ct
     }
 }
 
-private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ctx: TalkToAiPager) {
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketTabContent(ctx: TalkToAiPager, pageWidth: Float) {
     View {
         attr { flex(1f) }
-        View {
-            attr { flexDirectionRow(); padding(10f) }
-            listOf(false to "行情看板", true to "个股查询").forEach { (detail, title) ->
-                View {
-                    attr {
-                        padding(10f); marginRight(8f); borderRadius(16f)
-                        backgroundColor(if (ctx.viewModel.marketDetailVisible == detail) ThemeColors.accent else ThemeColors.surface)
-                    }
-                    Text { attr { text(title); fontSize(13f); color(if (ctx.viewModel.marketDetailVisible == detail) ThemeColors.onAccent else ThemeColors.onSurface) } }
-                    event { click { ctx.viewModel.marketDetailVisible = detail } }
-                }
-            }
-        }
         vif({ !ctx.viewModel.marketDetailVisible }) {
-            EditableDashboard { attr { flex(1f); darkMode(ThemeColors.isNightMode) } }
+            marketDashboardContent(ctx, pageWidth)
         }
-        vif({ ctx.viewModel.marketDetailVisible }) { marketDetailContent(ctx) }
+        vif({ ctx.viewModel.marketDetailVisible }) { marketDetailContent(ctx, pageWidth) }
     }
 }
 
-private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent(ctx: TalkToAiPager) {
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDashboardContent(
+    ctx: TalkToAiPager,
+    pageWidth: Float,
+) {
+    val width = (pageWidth - 24f).coerceAtLeast(1f)
+    val fontScale = ctx.pageData.params.optDouble("fontScale", 1.0).toFloat()
+        .takeIf { it.isFinite() && it > 0f } ?: 1f
+    val layout = MarketLayoutEnvironment(width, fontScale)
+    val theme = if (ThemeColors.isNightMode) MarketTheme.Dark else MarketTheme.Light
+    LazyColumn {
+        attr { flex(1f); padding(left = 12f, right = 12f, bottom = 16f) }
+        MarketDashboardView(
+            content = { ctx.viewModel.marketDashboardContent() },
+            state = { ctx.viewModel.marketDashboardState },
+            layout = layout,
+            theme = theme,
+            fallbackPolicy = MarketFallbackPolicy.DemoForEmptyOrInvalid,
+            onAction = ctx.viewModel::dispatchMarketDashboardAction,
+            onRetry = { ctx.viewModel.loadMarket(ctx.viewModel.marketPeriod) },
+            renderer = marketSdkChartRenderer(ThemeColors.isNightMode),
+        )
+    }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent(ctx: TalkToAiPager, pageWidth: Float) {
+    val availableWidth = (pageWidth - 52f).coerceAtLeast(1f)
+    val fontScale = ctx.pageData.params.optDouble("fontScale", 1.0).toFloat().takeIf { it.isFinite() && it > 0f } ?: 1f
+    val sdkLayout = MarketLayoutEnvironment(availableWidth, fontScale)
+    val sdkTheme = if (ThemeColors.isNightMode) MarketTheme.Dark else MarketTheme.Light
+    val sdkRenderer = marketSdkChartRenderer(ThemeColors.isNightMode)
     // Virtualize the detail page so the chart and metrics do not collapse into one viewport.
     LazyColumn {
         attr {
@@ -890,27 +1016,27 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent
             borderRadius(14f); backgroundColor(ThemeColors.surface)
             border(Border(0.5f, BorderStyle.SOLID, ThemeColors.divider))
         }
-        vif({ ctx.viewModel.marketSnapshot != null }) {
-            ctx.viewModel.marketSnapshot?.let { snapshot -> marketSnapshotHeader(snapshot, compact = false) }
-        }
-        vif({ ctx.viewModel.marketSnapshot == null }) {
-            Text {
-                attr { text(ctx.viewModel.marketSummary); fontSize(13f); lineHeight(19f); color(ThemeColors.onSurfaceVariant) }
-            }
-        }
+        Text { attr { text("个股查询"); fontSize(20f); fontWeightSemiBold(); color(ThemeColors.onSurface) } }
+        Text { attr { text("查看个股行情，了解价格与成交变化"); marginTop(6f); fontSize(12f); lineHeight(18f); color(ThemeColors.onSurfaceVariant) } }
         View {
             attr {
-                flexDirectionRow(); alignItemsCenter(); marginTop(12f); height(38f)
+                flexDirectionRow(); alignItemsCenter(); marginTop(16f); height(48f)
                 padding(left = 10f); borderRadius(10f); backgroundColor(ThemeColors.background)
             }
             Input {
                 attr {
-                    flex(1f); height(36f); color(ThemeColors.onSurface)
+                    flex(1f); height(48f); color(ThemeColors.onSurface); placeholderColor(ThemeColors.onSurfaceVariant)
                     placeholder("股票代码，如 600000.SH"); text(ctx.viewModel.marketSymbol); fontSize(13f)
                 }
                 event { textDidChange { ctx.viewModel.marketSymbol = it.text } }
             }
-            actionButton(ctx, "查询", "market-query", width = 58f)
+            Button {
+                attr {
+                    width(72f); height(48f); borderRadius(10f); backgroundColor(ThemeColors.accent)
+                    titleAttr { text("查询"); fontSize(14f); color(Color.WHITE) }
+                }
+                event { click { ctx.viewModel.loadMarket(ctx.viewModel.marketPeriod) } }
+            }
         }
         View {
             attr { flexDirectionRow(); marginTop(10f) }
@@ -936,6 +1062,36 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent
             }
             actionButton(ctx, "自定义", "market-custom", width = 64f)
         }
+        vbind({ ctx.viewModel.marketRequestState }) {
+            if (ctx.viewModel.marketRequestState !is MarketRequestUiState.Ready) {
+                marketQueryStatus(ctx, ctx.viewModel.marketRequestState)
+            } else {
+            ctx.viewModel.marketSnapshot?.let { snapshot -> marketSnapshotHeader(snapshot, compact = false) }
+            MarketMetricPanel(
+                title = "价格概览",
+                content = MarketComponentAdapter.prices(ctx.viewModel.marketRequestState),
+                kind = MarketChartKind.Bar,
+                unit = "元",
+                layout = sdkLayout,
+                blockId = MarketBlockId.Breadth,
+                theme = sdkTheme,
+                onRetry = { ctx.viewModel.dispatchMarketAction(MarketUiAction.Retry(it)) },
+                renderer = sdkRenderer,
+            )
+            MarketMetricPanel(
+                title = "成交量",
+                content = MarketComponentAdapter.volume(ctx.viewModel.marketRequestState),
+                kind = MarketChartKind.Bar,
+                unit = "股",
+                layout = sdkLayout,
+                blockId = MarketBlockId.Turnover,
+                theme = sdkTheme,
+                onRetry = { ctx.viewModel.dispatchMarketAction(MarketUiAction.Retry(it)) },
+                renderer = sdkRenderer,
+            )
+            }
+        }
+        vif({ ctx.viewModel.marketBars.isNotEmpty() }) {
         Text {
             attr { text("K 线与成交量"); marginTop(14f); fontSize(15f); fontWeightSemiBold(); color(ThemeColors.onSurface) }
         }
@@ -954,20 +1110,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent
                     darkMode(ThemeColors.isNightMode)
                 }
             }
-            vif({ ctx.viewModel.marketSnapshot != null }) {
-                ctx.viewModel.marketSnapshot?.let { snapshot -> marketMetricsTable(snapshot) }
-            }
         }
-        vif({ ctx.viewModel.marketBars.isEmpty() }) {
-            View {
-                attr {
-                    marginTop(8f); borderRadius(10f); backgroundColor(ThemeColors.background)
-                }
-                Text { attr { text(MarketChartSamples.DISCLAIMER); fontSize(12f); color(ThemeColors.accent) } }
-                MarketChart { attr {
-                    height(MARKET_DETAIL_CHART_HEIGHT_DP); barsJson(MarketChartSamples.bars().toChartJson()); darkMode(ThemeColors.isNightMode)
-                } }
-            }
         }
         Text {
             attr {
@@ -976,6 +1119,74 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketDetailContent
             }
         }
     }
+}
+
+private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.marketQueryStatus(
+    ctx: TalkToAiPager,
+    state: MarketRequestUiState,
+) {
+    val loading = state is MarketRequestUiState.Loading
+    val error = state as? MarketRequestUiState.Error
+    val origin = (state as? MarketRequestUiState.Empty)?.origin
+    View {
+        attr { marginTop(18f); padding(20f); minHeight(300f); borderRadius(18f); backgroundColor(ThemeColors.background); alignItemsCenter() }
+        Image { attr { size(128f, 128f); src(ImageUri.pageAssets("query-empty-v2.png")) } }
+        Text {
+            attr {
+                text(if (loading) "正在获取行情" else if (error != null) "暂时无法获取行情" else "暂未获取到行情")
+                fontSize(18f); fontWeightSemiBold(); color(ThemeColors.onSurface)
+            }
+        }
+        Text {
+            attr {
+                text(when {
+                    loading -> "正在查询所选股票和时间范围，请稍候。"
+                    error != null -> error.message
+                    origin?.simulated == true -> "当前为测试数据源，所选范围暂无记录。\n不会使用模拟曲线代替真实行情。"
+                    else -> "所选股票或时间范围暂无记录，\n请调整查询条件后重试。"
+                })
+                marginTop(10f); fontSize(12f); lineHeight(19f); textAlignCenter(); color(ThemeColors.onSurfaceVariant)
+            }
+        }
+        if (!loading && error?.retryable != false) {
+            Button {
+                attr {
+                    marginTop(18f); width(120f); height(48f); borderRadius(12f); backgroundColor(ThemeColors.accent)
+                    titleAttr { text("重新查询"); fontSize(14f); color(Color.WHITE) }
+                }
+                event { click { ctx.viewModel.dispatchMarketAction(MarketUiAction.Retry(MarketBlockId.Breadth)) } }
+            }
+        }
+        if (origin != null) {
+            Text { attr { text("数据来源：${origin.source}\n${if (origin.simulated) "模拟 / 测试数据 · 非实时行情" else "数据时间：${origin.marketTime.ifEmpty { "暂无" }}"}"); marginTop(18f); fontSize(10f); lineHeight(16f); textAlignCenter(); color(ThemeColors.onSurfaceVariant) } }
+        }
+    }
+}
+
+private fun marketSdkChartRenderer(darkMode: Boolean): MarketChartRenderer = { spec ->
+    val chartType = when (spec.kind) {
+        MarketChartKind.Sparkline -> "sparkline"
+        MarketChartKind.Bar -> "bar"
+        MarketChartKind.Pie -> "pie"
+    }
+    DataChart {
+        attr {
+            height(spec.heightDp)
+            chartType(chartType)
+            chartData(
+                ChartDataUi(
+                    title = spec.title,
+                    labels = spec.labels,
+                    xLabel = spec.xLabel,
+                    yLabel = spec.yLabel,
+                    series = listOf(ChartSeriesUi(spec.title, spec.values)),
+                ).toJson().let { payload -> JSONObject(payload).apply { put("compact", spec.heightDp <= 80f) }.toString() },
+            )
+            darkMode(darkMode)
+            accessibility(spec.summary)
+        }
+    }
+    MarketRenderResult.Rendered
 }
 
 // dp: room for K-line, volume, axes, legend and fullscreen/reset controls, independent of keyboard height.
@@ -1513,7 +1724,7 @@ private fun com.tencent.kuikly.core.base.ViewContainer<*, *>.periodButton(
 ) {
     Button {
         attr {
-            size(58f, 30f)
+            flex(1f); height(48f)
             marginRight(6f)
             borderRadius(9f)
             backgroundColor(if (ctx.viewModel.marketPeriod == period) ThemeColors.accent else ThemeColors.surfaceVariant)
