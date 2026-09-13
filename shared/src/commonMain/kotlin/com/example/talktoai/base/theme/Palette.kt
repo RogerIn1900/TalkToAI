@@ -15,14 +15,14 @@ import com.tencent.kuikly.core.base.Color
 internal object Palette {
 
     // ── 浅色（light） ────────────────────────────────────────────────
-    val backgroundLight      = Color(0xFFF5F7FA)   // 整体页面底色
+    val backgroundLight      = Color(0xFFF4F7FC)   // 冷灰蓝页面底色
     val surfaceLight         = Color(0xFFFFFFFF)   // 卡片/输入框/气泡底
-    val surfaceVariantLight  = Color(0xFFEEF2FF)   // chip 选中态等次级表面
-    val accentLight          = Color(0xFF3B82F6)   // 主色（按钮/强调）
+    val surfaceVariantLight  = Color(0xFFEDF2FF)   // chip 选中态等次级表面
+    val accentLight          = Color(0xFF3478F6)   // 主色（按钮/强调）
     val onAccentLight        = Color(0xFFFFFFFF)   // 主色之上的前景（按钮文字）
-    val onSurfaceLight       = Color(0xFF1A1A1A)   // 正文
-    val onSurfaceVariantLight = Color(0xFF666666)  // 副文/时间戳
-    val dividerLight         = Color(0xFFE5E5E5)   // 分隔线
+    val onSurfaceLight       = Color(0xFF17213C)   // 正文
+    val onSurfaceVariantLight = Color(0xFF6E7891)  // 副文/时间戳
+    val dividerLight         = Color(0xFFDFE7F3)   // 分隔线
     val errorLight           = Color(0xFFB00020)   // 错误/警示
     val overlayLight         = Color(0x66000000)   // 抽屉/弹窗半透明遮罩
 

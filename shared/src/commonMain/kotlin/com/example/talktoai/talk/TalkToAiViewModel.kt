@@ -9,6 +9,11 @@ import com.tencent.kuikly.core.reactive.collection.ObservableList
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.reactive.handler.observableList
 import com.tencent.kuikly.core.views.TextInputState
+import com.talktoai.marketui.MarketBlockId
+import com.talktoai.marketui.MarketDashboardAction
+import com.talktoai.marketui.MarketDashboardContent
+import com.talktoai.marketui.MarketDashboardPolicy
+import com.talktoai.marketui.MarketDashboardState
 
 internal class TalkToAiViewModel(
     private val bridge: BridgeModule,
@@ -29,6 +34,8 @@ internal class TalkToAiViewModel(
     var marketDetailVisible: Boolean by observable(false)
     var marketSnapshot: MarketSnapshotUi? by observable(null)
     var marketLoading: Boolean by observable(false)
+    var marketRequestState: MarketRequestUiState by observable(MarketRequestUiState.Loading)
+    var marketDashboardState: MarketDashboardState by observable(MarketDashboardState())
     var marketPeriod: String by observable("day")
     var marketSymbol: String by observable("600000.SH")
     var marketFrom: String by observable("")
@@ -70,6 +77,8 @@ internal class TalkToAiViewModel(
     var totalMessageCount: Int by observable(0)
     private var scrollRequestVersion: Int = 1
     private var consumedScrollRequestVersion: Int = 0
+    private var marketRequestVersion: Int = 0
+    private var lastMarketCustomRange: Boolean = false
     private var notificationRef: CallbackRef? = null
     private var networkNotificationRef: CallbackRef? = null
 
@@ -119,10 +128,23 @@ internal class TalkToAiViewModel(
     }
 
     fun destroy() {
+        marketRequestVersion++
         notificationRef?.let { notify.removeNotify(CHAT_EVENT, it) }
         networkNotificationRef?.let { notify.removeNotify(NETWORK_EVENT, it) }
         notificationRef = null
         networkNotificationRef = null
+    }
+
+    fun marketDashboardContent(): MarketDashboardContent =
+        AiMarketDashboardAdapter.fromMessages(messages.toList())
+
+    fun dispatchMarketDashboardAction(action: MarketDashboardAction) {
+        marketDashboardState = MarketDashboardPolicy.reduce(marketDashboardState, action)
+        if (action is MarketDashboardAction.OpenIndex) {
+            marketSymbol = action.symbol
+            marketDetailVisible = true
+            loadMarket("day")
+        }
     }
 
     fun updateInputState(state: TextInputState) {
@@ -598,17 +620,30 @@ internal class TalkToAiViewModel(
     fun loadMarket(period: String, customRange: Boolean = false) {
         val symbol = marketSymbol.trim().uppercase()
         if (!Regex("^(?:[036]\\d{5})\\.(?:SH|SZ)$").matches(symbol)) {
+            marketRequestVersion++
+            marketLoading = false
             marketSummary = "请输入形如 600000.SH 或 000001.SZ 的 A 股代码"
+            marketBars = emptyList()
+            marketSnapshot = null
+            marketRequestState = MarketRequestUiState.Error("INVALID_SYMBOL", marketSummary, retryable = false)
             return
         }
         if (customRange && (!TalkUiPolicy.isIsoDate(marketFrom) || !TalkUiPolicy.isIsoDate(marketTo) || marketFrom > marketTo)) {
+            marketRequestVersion++
+            marketLoading = false
             marketSummary = "自定义日期须为 YYYY-MM-DD，且起始日期不晚于结束日期"
+            marketBars = emptyList()
+            marketSnapshot = null
+            marketRequestState = MarketRequestUiState.Error("INVALID_RANGE", marketSummary, retryable = false)
             return
         }
         marketSymbol = symbol
         marketPeriod = period
+        lastMarketCustomRange = customRange
         marketSummary = "行情加载中…"
         marketLoading = true
+        marketRequestState = MarketRequestUiState.Loading
+        val requestVersion = ++marketRequestVersion
         bridge.callJsonRpc("talk.market.bars", JSONObject().apply {
             put("symbol", symbol)
             put("period", period)
@@ -617,34 +652,79 @@ internal class TalkToAiViewModel(
                 put("to", marketTo)
             }
         }) { response ->
+            if (requestVersion != marketRequestVersion) return@callJsonRpc
             val root = parseWrappedJson(response)
             if (root == null) {
                 marketLoading = false
                 marketSummary = response?.optString("message").orEmpty().ifEmpty { "行情加载失败" }
                 marketBars = emptyList()
                 marketSnapshot = null
+                marketRequestState = MarketRequestUiState.Error(
+                    code = response?.optString("error").orEmpty().ifEmpty { "MARKET_REQUEST_FAILED" },
+                    message = marketSummary,
+                    retryable = true,
+                )
                 return@callJsonRpc
             }
             val data = root.optJSONArray("data") ?: JSONArray()
-            marketBars = buildList {
-                for (index in 0 until data.length()) {
-                    data.optJSONObject(index)?.let { bar ->
+            val parsedBars = runCatching {
+                buildList {
+                    for (index in 0 until data.length()) {
+                        val bar = requireNotNull(data.optJSONObject(index))
                         add(MarketBarUi(
                             time = bar.optString("time"),
-                            open = bar.optDouble("open").toFloat(),
-                            high = bar.optDouble("high").toFloat(),
-                            low = bar.optDouble("low").toFloat(),
-                            close = bar.optDouble("close").toFloat(),
-                            volume = bar.optDouble("volume").toFloat(),
-                        ))
+                            open = bar.optDouble("open", Double.NaN).toFloat(),
+                            high = bar.optDouble("high", Double.NaN).toFloat(),
+                            low = bar.optDouble("low", Double.NaN).toFloat(),
+                            close = bar.optDouble("close", Double.NaN).toFloat(),
+                            volume = bar.optDouble("volume", Double.NaN).toFloat(),
+                        ).also {
+                            require(it.time.isNotBlank())
+                            require(listOf(it.open, it.high, it.low, it.close, it.volume).all(Float::isFinite))
+                            require(it.volume >= 0f && it.low <= minOf(it.open, it.close) && it.high >= maxOf(it.open, it.close))
+                        })
                     }
                 }
+            }.getOrElse {
+                marketLoading = false
+                marketSummary = "行情数据格式无效，请重试"
+                marketBars = emptyList()
+                marketSnapshot = null
+                marketRequestState = MarketRequestUiState.Error("INVALID_MARKET_DATA", marketSummary, retryable = true)
+                return@callJsonRpc
             }
             val cacheLabel = if (root.optBoolean("clientCacheHit")) " · 本地缓存" else ""
             marketLoading = false
+            val source = root.optString("source")
+            val origin = MarketOriginUi(
+                source = source,
+                marketTime = root.optString("marketTime"),
+                fetchedAt = root.optString("fetchedAt"),
+                freshness = root.optString("freshness"),
+                clientCacheHit = root.optBoolean("clientCacheHit"),
+                simulated = TalkUiPolicy.isFixtureMarketSource(source),
+            )
+            if (origin.simulated) {
+                marketBars = emptyList()
+                marketSnapshot = null
+                marketSummary = "固定测试行情不在生产页面展示，请配置真实或延时行情源\n来源：$source"
+                marketRequestState = MarketRequestUiState.Empty(origin)
+                return@callJsonRpc
+            }
+            marketBars = parsedBars
             marketSnapshot = TalkUiPolicy.marketSnapshot(root, marketBars)
             marketSummary = "${root.optString("symbol")} · ${root.optString("freshness")}$cacheLabel\n" +
-                "数据：${root.optString("marketTime")}\n来源：${root.optString("source")}"
+                "数据：${root.optString("marketTime")}\n来源：$source"
+            marketRequestState = marketSnapshot?.let { MarketRequestUiState.Ready(it, parsedBars) }
+                ?: MarketRequestUiState.Empty(origin)
+        }
+    }
+
+    fun dispatchMarketAction(action: MarketUiAction) {
+        when (action) {
+            is MarketUiAction.Retry -> if (action.blockId == MarketBlockId.Breadth || action.blockId == MarketBlockId.Turnover) {
+                loadMarket(marketPeriod, lastMarketCustomRange)
+            }
         }
     }
 
@@ -725,6 +805,13 @@ internal class TalkToAiViewModel(
             inlineMarketSnapshot = null
             return
         }
+        val source = root.optString("source")
+        if (TalkUiPolicy.isFixtureMarketSource(source)) {
+            inlineMarketSummary = "固定测试行情不作为 AI 解读依据\n来源：$source"
+            inlineMarketBars = emptyList()
+            inlineMarketSnapshot = null
+            return
+        }
         val data = root.optJSONArray("data") ?: JSONArray()
         inlineMarketBars = buildList {
             for (index in 0 until data.length()) {
@@ -742,7 +829,7 @@ internal class TalkToAiViewModel(
         }
         inlineMarketSnapshot = TalkUiPolicy.marketSnapshot(root, inlineMarketBars)
         inlineMarketSummary = "${root.optString("symbol")} · ${root.optString("freshness")}\n" +
-            "数据：${root.optString("marketTime")}\n来源：${root.optString("source")}"
+            "数据：${root.optString("marketTime")}\n来源：$source"
     }
 
     private fun applySession(session: JSONObject) {
@@ -1039,6 +1126,9 @@ internal data class ChartDataUi(
 }
 
 internal object TalkUiPolicy {
+    fun isFixtureMarketSource(source: String): Boolean =
+        source.contains("测试固定数据") || source.contains("测试夹具")
+
     fun shouldRenderDerivedCharts(role: String, status: String): Boolean =
         role != "user" && status != "streaming"
 

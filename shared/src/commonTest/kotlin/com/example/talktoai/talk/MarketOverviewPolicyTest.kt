@@ -24,6 +24,10 @@ class MarketOverviewPolicyTest {
         assertTrue(MarketOverviewPolicy.parse(envelope.replace("\"volume\":100", "\"volume\":-1")).isEmpty())
     }
 
+    @Test fun fixedBackendFixtureIsNotRenderedAsProductionOverview() {
+        assertTrue(MarketOverviewPolicy.parse(envelope.replace("测试数据", "TalkToAI 测试固定数据（非实时行情）")).isEmpty())
+    }
+
     @Test fun selectionToolbarIsBelowSelectionIncludingBubbleOffset() {
         val bottom = 22f + 100f + 48f
         assertTrue(TalkUiPolicy.selectionToolbarBelow(100f, 48f, 22f) > bottom)

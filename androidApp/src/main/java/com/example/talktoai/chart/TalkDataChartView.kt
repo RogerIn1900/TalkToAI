@@ -27,6 +27,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
     private var chartType = TYPE_LINE
     private var chartData = ""
     private var darkMode = false
+    private var compact = false
     private var renderedConfiguration: Triple<String, String, Boolean>? = null
     private val renderTask = Runnable { renderChart() }
     private val lineChart by lazy { LineChart(context) }
@@ -75,7 +76,9 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         val configuration = Triple(chartType, chartData, darkMode)
         if (configuration == renderedConfiguration) return
         if (chartData.isBlank()) return
-        val model = runCatching { ChartPayload.parse(JSONObject(chartData)) }.getOrNull() ?: return
+        val payload = runCatching { JSONObject(chartData) }.getOrNull() ?: return
+        val model = runCatching { ChartPayload.parse(payload) }.getOrNull() ?: return
+        compact = payload.optBoolean("compact", false)
         interactionHost?.closeFullscreen()
         removeAllViews()
         val chart = when (chartType) {
@@ -86,7 +89,7 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         }
         // Chart instances survive type switches; only their validated data/configuration changes.
         (chart.parent as? android.view.ViewGroup)?.removeView(chart)
-        interactionHost = if (chartType == TYPE_SPARKLINE) null else ChartInteractionHost(context, chart, listOf(chart), darkMode)
+        interactionHost = if (chartType == TYPE_SPARKLINE || compact) null else ChartInteractionHost(context, chart, listOf(chart), darkMode)
         addView(interactionHost ?: chart, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         renderedConfiguration = configuration
     }
@@ -102,7 +105,12 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         setViewPortOffsets(0f, 4f, 0f, 4f)
         data = LineData(model.series.map { series ->
             LineDataSet(series.values.mapIndexed { index, value -> Entry(index.toFloat(), value) }, series.name).apply {
-                color = SERIES_COLORS.first()
+                color = if (compact) {
+                    if (series.values.last() >= series.values.first()) {
+                        if (darkMode) Color.rgb(255, 163, 173) else Color.rgb(197, 31, 53)
+                    } else if (darkMode) Color.rgb(120, 223, 176) else Color.rgb(0, 122, 81)
+                } else SERIES_COLORS.first()
+                setDrawFilled(compact); fillColor = color; fillAlpha = 18
                 lineWidth = 1.5f
                 setDrawCircles(false)
                 setDrawValues(false)
@@ -153,14 +161,21 @@ class TalkDataChartView(context: Context) : FrameLayout(context), IKuiklyRenderV
         setEntryLabelColor(if (darkMode) Color.WHITE else Color.DKGRAY)
         setHoleColor(Color.TRANSPARENT)
         legend.textColor = foregroundColor()
+        legend.isEnabled = !compact
+        setDrawEntryLabels(false)
+        setTouchEnabled(!compact)
+        holeRadius = if (compact) 68f else 50f
+        setExtraOffsets(0f, 0f, 0f, 0f)
+        minOffset = if (compact) 0f else 15f
         val first = model.series.first()
         data = PieData(PieDataSet(first.values.mapIndexed { index, value ->
             PieEntry(value, model.labels.getOrElse(index) { (index + 1).toString() })
         }, first.name).apply {
-            colors = SERIES_COLORS.toList()
+            colors = if (compact) listOf(Color.rgb(197, 31, 53), Color.rgb(0, 122, 81), Color.rgb(145, 156, 176)) else SERIES_COLORS.toList()
             valueTextColor = foregroundColor()
             valueTextSize = 10f
         })
+        data.setDrawValues(!compact)
         invalidate()
     }
 
